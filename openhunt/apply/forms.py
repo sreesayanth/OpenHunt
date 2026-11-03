@@ -254,10 +254,18 @@ async def fill(page, raw: Raw, value: Fill) -> None:
         return
     if ui == "select":
         loc = _loc(page, raw.ids[0])
-        if isinstance(value, list):
-            await loc.select_option(label=value)
-        else:
-            await loc.select_option(label=str(value))
+        try:
+            await loc.select_option(label=value if isinstance(value, list) else str(value), timeout=5000)
+        except Exception:  # noqa: BLE001 - label text differs in spacing: match it the way we read it
+            wanted = value if isinstance(value, list) else [str(value)]
+            ok = await loc.evaluate(
+                """(el, wanted) => { const clean = t => (t || '').replace(/\s+/g, ' ').trim(); let hit = false;
+                   for (const o of el.options) { const on = wanted.includes(clean(o.textContent)); o.selected = on; hit = hit || on; }
+                   el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); return hit; }""",
+                wanted,
+            )
+            if not ok:
+                raise
         return
     if ui == "combobox":
         await _fill_combobox(page, raw, str(value))

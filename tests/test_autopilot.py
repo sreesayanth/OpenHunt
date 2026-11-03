@@ -285,3 +285,17 @@ def test_generated_cv_when_the_user_never_sent_one(tmp_path):
     path = resolve_known(FormField("Resume/CV", "file", required=True)).fill
     assert path and path.endswith("Asha_Kumar_CV.pdf") and store.get("cv_generated")
     assert "Asha Kumar" in PdfReader(path).pages[0].extract_text()
+
+
+def test_hours_follow_the_users_country_not_the_server(monkeypatch):
+    from openhunt import timeutil
+
+    monkeypatch.delenv("OPENHUNT_TZ", raising=False)
+    store.put("prefs", {"titles": ["x"], "country": "india"})
+    assert str(timeutil.user_tz()) == "Asia/Kolkata"
+    store.put("prefs", {"titles": ["x"], "country": "india", "timezone": "Europe/Berlin"})
+    assert str(timeutil.user_tz()) == "Europe/Berlin"
+    monkeypatch.setenv("OPENHUNT_TZ", "Asia/Dubai")
+    assert str(timeutil.user_tz()) == "Asia/Dubai"
+    midnight = queue.local_midnight_utc()
+    assert midnight.astimezone(timeutil.user_tz()).hour == 0

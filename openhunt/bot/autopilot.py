@@ -26,6 +26,7 @@ from openhunt.apply.browser import BROWSER, BrowserUnavailable
 from openhunt.apply.sites import SITES
 from openhunt.bot import apply_flow, login_flow
 from openhunt.store import Application, Job, Match, PendingQuestion, utcnow
+from openhunt.timeutil import user_tz
 
 log = logging.getLogger(__name__)
 
@@ -385,7 +386,7 @@ async def show_applications(bot: Bot, chat_id: int, message=None) -> None:
     lines = ["📋 <b>Your applications</b>", ""]
     rows = []
     for a in apps:
-        when = queue.aware(a.submitted_at or a.updated_at).astimezone().strftime("%d %b")
+        when = queue.aware(a.submitted_at or a.updated_at).astimezone(user_tz()).strftime("%d %b")
         lines.append(f"{ICONS.get(a.status, '•')} {escape(a.title or 'Job')} · {escape(a.company or '')} <i>({STATUS_TEXT.get(a.status, a.status)}, {when})</i>")
         if a.status in ("needs_you", "failed", "skipped", "needs_login"):
             rows.append([InlineKeyboardButton(f"🔁 Retry {a.company or 'job'}"[:40], callback_data=f"{KIND}:retry:{a.id}"),
@@ -409,7 +410,7 @@ async def send_proof(bot: Bot, chat_id: int, app_id: int) -> None:
     answered = json.loads(app.answers or "[]")
     lines = [f"🧾 <b>{escape(app.title)}</b> · {escape(app.company)}"]
     if app.submitted_at:
-        lines.append(f"Applied {queue.aware(app.submitted_at).astimezone().strftime('%d %b %Y, %H:%M')}")
+        lines.append(f"Applied {queue.aware(app.submitted_at).astimezone(user_tz()).strftime('%d %b %Y, %H:%M')}")
     for item in answered[:25]:
         answer = str(item.get("answer", ""))
         answer = "📎 your CV" if answer.startswith("/") else answer[:120]
@@ -524,7 +525,7 @@ def start(app: TgApp) -> None:
     """Start the worker and the evening summary (called once the bot is running)."""
     for job in app.job_queue.get_jobs_by_name("daily_summary"):
         job.schedule_removal()
-    tz = datetime.now().astimezone().tzinfo
+    tz = user_tz()
     app.job_queue.run_daily(daily_summary, time=SUMMARY_TIME.replace(tzinfo=tz), name="daily_summary")
     stop()
     # A plain task, not app.create_task: the bot waits for those on shutdown, and this one never ends.

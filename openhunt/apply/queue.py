@@ -129,7 +129,9 @@ def aware(dt: datetime | None) -> datetime | None:
 
 
 def local_midnight_utc() -> datetime:
-    return datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    from openhunt.timeutil import now
+
+    return now().replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
 
 
 def submitted_today(site: str) -> int:
@@ -140,8 +142,10 @@ def submitted_today(site: str) -> int:
 
 
 def in_active_hours(now: datetime | None = None) -> bool:
+    from openhunt import timeutil
+
     start, end = settings()["hours"]
-    hour = (now or datetime.now()).hour
+    hour = (now or timeutil.now()).hour
     return start <= hour < end
 
 
