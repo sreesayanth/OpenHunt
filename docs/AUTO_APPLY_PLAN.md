@@ -101,7 +101,7 @@ You can also just **type** what you want: *"stop applying on LinkedIn"*, *"don't
 | Email + password | You type them. The bot **deletes both messages right away** and types them into the hidden browser. |
 | Code by email / SMS / authenticator | *"Type the code LinkedIn sent you."* You type it, and it's deleted after use. |
 | "Approve on your phone" (LinkedIn app) | *"Tap Yes in the LinkedIn app on your phone."* The bot waits and continues. |
-| Google / "Sign in with Google" login | Same as above: email, password and code in the chat, deleted after use. |
+| Google / "Sign in with Google" login | Not supported yet: Google blocks automated browsers. Use the site's own email + password login. |
 | CAPTCHA / "are you a robot" | See §2.2. |
 | Logged out weeks later | *"LinkedIn logged me out. Send your password again?"* The password is the only thing asked. |
 
@@ -309,8 +309,20 @@ PendingQuestion(id, key, field_json, application_ids_json, telegram_message_id,
 SiteLogin(site, status: ok|logged_out|paused, paused_until, daily_count, day,
           password_encrypted NULL)          # only if the user opted in
 ```
-Browser sessions: `~/.openhunt/browser/<site>/` (folder permissions 700, cookies encrypted at rest).
+Browser sessions: `~/.openhunt/browser/<site>.state`, the site's cookies encrypted with the same key as the bot token
+(folder permissions 700, file 600). Site status lives in the `sites` setting; a remembered password in the encrypted
+`login_secret:<site>` setting.
 When a job is submitted, the existing `Match.status` becomes `applied`.
+
+### Phase B notes
+- The browser is **not disguised**: it reports itself as headless Chrome, and OpenHunt adds no anti-detection tricks.
+  If a site refuses it, the user is told in plain words instead of OpenHunt trying to hide.
+- Login works by reading the page after every step (login form, wrong password, code, "approve in the app",
+  CAPTCHA, success), so small layout changes don't break it. It is tested against a local fake site
+  (`tests/fakesite`). The LinkedIn and Naukri field names come from their public login pages and still need a
+  check against the live sites.
+- Saved logins are checked every 6 hours. If a site logged OpenHunt out, it logs in again by itself with a
+  remembered password, or asks the user with a one-tap "Log in again" button.
 
 ---
 
@@ -319,7 +331,7 @@ When a job is submitted, the existing `Match.status` becomes `applied`.
 | Phase | Deliverable | Done when |
 |---|---|---|
 | **A. Answer memory** ✅ done | `fields.py`, `answers.py`, `intents.py`, tables, CV → answers, chat questions with buttons, "what I know about you", typed changes | One question in 5 wordings → asked once; answers fit number, dropdown and radio fields |
-| **B. Hidden browser + chat login** | `browser.py`, automatic Chromium download, login by chat (email, password, code, app approval), messages deleted, sessions saved | LinkedIn and Naukri log in entirely from the chat |
+| **B. Hidden browser + chat login** ✅ done | `browser.py`, automatic Chromium download, login by chat (email, password, code, app approval), messages deleted, sessions saved | LinkedIn and Naukri log in entirely from the chat |
 | **C. Company career sites** | Greenhouse, Lever, Ashby adapters, `engine.py`, parking, proof | A real Greenhouse job is applied to in the background; the user only answers new questions |
 | **D. LinkedIn Easy Apply + Naukri** | adapters, `guard.py`, following external apply links | 10 jobs in a row; the second 10 need no questions |
 | **E. Autopilot** | `queue.py`, auto-pick from hunts, limits, pacing, daily summary, pause/resume, typed commands | Applies overnight within limits and sends one morning summary |

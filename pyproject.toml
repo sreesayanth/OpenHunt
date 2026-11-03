@@ -25,6 +25,9 @@ dependencies = [
 [project.optional-dependencies]
 # LinkedIn / Indeed / Glassdoor / Naukri search. Heavy (pandas), so optional for Android/Termux.
 boards = ["python-jobspy>=1.4"]
+# The hidden browser for logging in and applying. Downloaded automatically the first time you connect
+# a job site, so installing it up front is optional. Not available on Android/Termux.
+apply = ["playwright>=1.49"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23"]
 
 [project.scripts]

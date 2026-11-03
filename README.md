@@ -56,6 +56,7 @@ Run `termux-wake-lock` so Android doesn't stop it. Use a cloud AI (not Ollama) o
 | `/profile` | Change jobs, places, salary, or send a new CV |
 | `/schedule` | Every morning, twice a day, or every hour |
 | `/pause` / `/resume` | Stop and start automatic searching |
+| `/sites` | Log in to LinkedIn or Naukri, all inside the chat, so I can apply there later |
 | `/answers` | What I know about you: the answers I'll use on job forms. Change any of them, or just type *"my notice period is now 30 days"* |
 | `/ai` | Connect or change AI |
 | `/status` | Check everything works |
@@ -64,16 +65,17 @@ Run `termux-wake-lock` so Android doesn't stop it. Use a cloud AI (not Ollama) o
 Add company career boards to your preferences (`watchlist`), e.g. `greenhouse:stripe`, `lever:netflix`, `ashby:notion`.
 
 ## Safety
-- OpenHunt **never applies, posts or sends messages for you**. You tap "Open & apply" yourself.
-- It never asks for your LinkedIn password. LinkedIn and Indeed are searched publicly, at low volume, for personal use.
+- OpenHunt **doesn't apply, post or send messages for you** yet. You tap "Open & apply" yourself. (Applying for you is being built, opt-in. See [docs/AUTO_APPLY_PLAN.md](docs/AUTO_APPLY_PLAN.md).)
+- Job searches on LinkedIn and Indeed are public, at low volume, for personal use, and need no login.
+- Job site logins (`/sites`) are optional. You type your email and password in the chat, the bot deletes those messages at once, and the password is forgotten after login unless you tap "Remember it" (then it's stored encrypted). The saved login (cookies) is encrypted too. LinkedIn's rules don't allow bots, so the bot warns you before connecting it.
 - Only Telegram accounts you linked with a one-time code can control your bot.
 - API keys and tokens are stored encrypted in `~/.openhunt` (set `OPENHUNT_DATA` to move it).
 - `openhunt reset` deletes everything.
 
 ## Development
 ```bash
-pip install -e ".[boards,dev]"
-pytest
+pip install -e ".[boards,apply,dev]"
+pytest   # browser tests need Chromium: `playwright install chromium`, or set OPENHUNT_CHROMIUM=/path/to/chrome
 ```
 
 MIT licensed.

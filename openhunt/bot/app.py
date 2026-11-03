@@ -20,7 +20,7 @@ from telegram.ext import (
 from openhunt import store
 from openhunt.ai import cli_providers, llm, openrouter
 from openhunt.ai.profile import build_profile, extract_text
-from openhunt.bot import apply_flow, scheduler
+from openhunt.bot import apply_flow, login_flow, scheduler
 from openhunt.bot.cards import SCHEDULE_BUTTONS, job_card, keyboard
 from openhunt.hunt import HuntResult, run_hunt
 
@@ -37,6 +37,7 @@ COMMANDS = [
     ("pause", "Pause automatic searching"),
     ("resume", "Resume automatic searching"),
     ("answers", "What I know about you"),
+    ("sites", "Log in to job sites"),
     ("ai", "Connect or change AI"),
     ("status", "Is everything working?"),
     ("help", "What can I do?"),
@@ -151,7 +152,7 @@ def main_menu() -> InlineKeyboardMarkup:
     return keyboard(
         [("🔎 Search now", "menu:search"), ("🏆 Today's best", "menu:today")],
         [("⭐ Saved", "menu:saved"), ("⚙️ Profile", "menu:profile")],
-        [("🧠 What I know about you", "menu:answers")],
+        [("🧠 What I know about you", "menu:answers"), ("🔐 Job sites", "menu:sites")],
     )
 
 
@@ -358,6 +359,11 @@ async def cmd_answers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 @only_owner
+async def cmd_sites(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await login_flow.show_sites(context.bot, update.effective_chat.id)
+
+
+@only_owner
 async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"🧠 AI: {llm.describe()}\nChoose one:", reply_markup=ai_menu())
 
@@ -375,6 +381,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"   found {last.get('found', 0)} · new {last.get('new', 0)} · matches {last.get('matches', 0)}")
         for err in last.get("errors", [])[:3]:
             lines.append(f"   ⚠️ {escape(err[:120])}")
+    lines += [escape(line) for line in login_flow.status_lines()]
     await update.message.reply_html("\n".join(lines))
 
 
@@ -396,6 +403,9 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if kind in apply_flow.KINDS:
         await apply_flow.handle_button(update, context)
+        return
+    if kind == login_flow.KIND:
+        await login_flow.handle_button(update, context)
         return
 
     if kind == "m":
@@ -421,6 +431,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await show_profile(chat_id, bot)
         elif arg == "answers":
             await apply_flow.show_answers(bot, chat_id)
+        elif arg == "sites":
+            await login_flow.show_sites(bot, chat_id)
         return
 
     if kind == "sched":
@@ -547,6 +559,9 @@ async def choose_ai(chat_id: int, bot: Bot, provider: str) -> None:
 
 @only_owner
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # A login waiting for an email, password or code comes first: those messages are deleted at once.
+    if await login_flow.handle_text(update, context):
+        return
     text = update.message.text.strip()
     chat_id = update.effective_chat.id
     bot = context.bot
@@ -652,7 +667,7 @@ def build_application(token: str) -> Application:
     for name, fn in [
         ("help", cmd_help), ("search", cmd_search), ("today", cmd_today), ("saved", cmd_saved),
         ("profile", cmd_profile), ("schedule", cmd_schedule), ("pause", cmd_pause),
-        ("resume", cmd_resume), ("answers", cmd_answers), ("ai", cmd_ai), ("status", cmd_status),
+        ("resume", cmd_resume), ("answers", cmd_answers), ("sites", cmd_sites), ("ai", cmd_ai), ("status", cmd_status),
     ]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))
@@ -664,3 +679,4 @@ def build_application(token: str) -> Application:
 async def on_started(app: Application) -> None:
     await app.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
     scheduler.apply_schedule(app, catch_up=True)
+    login_flow.schedule_checks(app)

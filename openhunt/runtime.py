@@ -80,3 +80,6 @@ class Runtime:
                 await asyncio.Event().wait()
         finally:
             await self.stop_bot()
+            from openhunt.apply.browser import BROWSER
+
+            await BROWSER.close()

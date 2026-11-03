@@ -12,6 +12,11 @@ from openhunt.config import DB_PATH, FILES_DIR, KEY_PATH
 
 # Settings whose values are encrypted at rest.
 SECRET_KEYS = {"bot_token", "ai_api_key"}
+SECRET_PREFIXES = ("login_secret:",)  # job-site passwords, only if the user chose "remember"
+
+
+def is_secret(key: str) -> bool:
+    return key in SECRET_KEYS or key.startswith(SECRET_PREFIXES)
 
 
 def utcnow() -> datetime:
@@ -110,14 +115,14 @@ def get(key: str, default: Any = None) -> Any:
     if row is None:
         return default
     raw = row.value
-    if key in SECRET_KEYS:
+    if is_secret(key):
         raw = _fernet().decrypt(raw.encode()).decode()
     return json.loads(raw)
 
 
 def put(key: str, value: Any) -> None:
     raw = json.dumps(value)
-    if key in SECRET_KEYS:
+    if is_secret(key):
         raw = _fernet().encrypt(raw.encode()).decode()
     with session() as s:
         s.merge(Setting(key=key, value=raw))
