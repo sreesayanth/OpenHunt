@@ -1,0 +1,43 @@
+<html><body><div class="jobs-details">
+<h1 class="job-title">Data Analyst</h1><a class="company">Acme</a>
+<div class="jobs-apply-button--top-card"><button class="jobs-apply-button" aria-label="Easy Apply to Data Analyst at Acme" onclick="openModal()"><span>Easy Apply</span></button></div>
+<div class="jobs-description">SQL and Python.</div></div>
+<div id="modal" role="dialog" class="jobs-easy-apply-modal" style="display:none"><div class="content" id="step"></div>
+ <footer><button id="next" class="artdeco-button" onclick="next()"></button></footer></div>
+<div id="sent" style="display:none" role="dialog"><h2>Your application was sent to Acme!</h2><button aria-label="Dismiss">Done</button></div>
+<script>
+const steps = [
+ `<h3>Contact info</h3>
+  <div class="fb-dash-form-element"><label for="em">Email address</label><select id="em" required><option>Select an option</option><option selected>asha@example.com</option></select></div>
+  <div class="fb-dash-form-element"><label for="cc">Phone country code</label><select id="cc" required><option>Select an option</option><option>United States (+1)</option><option>India (+91)</option></select></div>
+  <div class="fb-dash-form-element"><label for="ph">Mobile phone number</label><input id="ph" required type="text"></div>`,
+ `<h3>Resume</h3><div class="jobs-document-upload"><label for="up" class="jobs-document-upload__upload-button">Upload resume</label><input id="up" type="file" style="display:none"></div>`,
+ `<h3>Additional Questions</h3>
+  <div class="fb-dash-form-element"><label for="py">How many years of work experience do you have with Python?</label><input id="py" type="text" required>
+   <div class="artdeco-inline-feedback--error" id="py-err" style="display:none" role="alert">Enter a whole number between 0 and 99</div></div>
+  <fieldset data-test-form-builder-radio-button-form-component="true"><legend><span>Are you comfortable commuting to this job's location?</span></legend>
+   <div><input type="radio" id="c1" name="commute" value="Yes" required><label for="c1">Yes</label></div>
+   <div><input type="radio" id="c2" name="commute" value="No"><label for="c2">No</label></div></fieldset>
+  <div class="fb-dash-form-element"><label for="eng">What is your level of proficiency in English?</label><select id="eng" required><option>Select an option</option><option>None</option><option>Conversational</option><option>Professional</option><option>Native or bilingual</option></select></div>`,
+ `<h3>Review your application</h3><p>You can review your information below.</p>
+  <div><input type="checkbox" id="follow-company-checkbox" checked><label for="follow-company-checkbox">Follow Acme to stay up to date with their page.</label></div>`,
+];
+let i = 0; const got = {};
+function openModal() { document.getElementById('modal').style.display = 'block'; render(); }
+function render() { document.getElementById('step').innerHTML = steps[i]; const b = document.getElementById('next');
+  if (i < steps.length - 2) { b.setAttribute('aria-label', 'Continue to next step'); b.innerText = 'Next'; }
+  else if (i === steps.length - 2) { b.setAttribute('aria-label', 'Review your application'); b.innerText = 'Review'; }
+  else { b.setAttribute('aria-label', 'Submit application'); b.innerText = 'Submit application'; } }
+function bad(id) { const el = document.getElementById(id); el.setAttribute('aria-invalid', 'true'); return true; }
+async function next() {
+  const s = document.getElementById('step');
+  if (i === 0) { const ph = document.getElementById('ph'), cc = document.getElementById('cc'); if (!ph.value || cc.selectedIndex < 1) { bad('ph'); return; } got.phone = ph.value; got.code = cc.value; }
+  if (i === 1) { const up = document.getElementById('up'); if (!up.files.length) return; got.resume = up.files[0].name; }
+  if (i === 2) { const py = document.getElementById('py').value; if (!/^\d+$/.test(py)) { bad('py'); document.getElementById('py-err').style.display = 'block'; return; }
+    const c = s.querySelector('input[name=commute]:checked'), eng = document.getElementById('eng'); if (!c || eng.selectedIndex < 1) return;
+    got.python = py; got.commute = c.value; got.english = eng.value; }
+  if (i === 3) { got.follow = document.getElementById('follow-company-checkbox').checked;
+    await fetch('/submit/linkedin', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(got)});
+    document.getElementById('modal').style.display = 'none'; document.getElementById('sent').style.display = 'block'; return; }
+  i++; render(); }
+</script></body></html>

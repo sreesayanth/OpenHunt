@@ -4,9 +4,32 @@ Emails choose the path: pin@x → email code, app@x → approve in app, captcha@
 digits@x → one box per digit. Password "right" is correct; code "123456" is correct.
 """
 
+import json
 import threading
+from email.parser import BytesParser
+from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs
+
+PAGES = Path(__file__).parent / "pages"
+SUBMISSIONS: dict[str, list[dict]] = {}  # site → every application received
+ROUTES = {
+    "/gh/acme/jobs/1": "greenhouse.html",
+    "/lever/acme/1": "lever_job.html",
+    "/lever/acme/1/apply": "lever.html",
+    "/ashby/acme/1/application": "ashby.html",
+    "/careers/job/1": "generic_job.html",
+    "/careers/apply/1": "generic_form.html",
+    "/jobs/view/1/": "linkedin_job.html",
+    "/jobs/view/2/": "linkedin_external.html",
+    "/naukri/job-listings-1": "naukri_job.html",
+}
+THANKS = {
+    "greenhouse": "<h1>Thank you for applying.</h1><p>Your application has been received.</p>",
+    "lever": "<h3>Application submitted!</h3><p>Thanks for applying to Acme.</p>",
+    "generic": "<h1>Thank you!</h1><p>We received your application.</p>",
+}
 
 PAGE = "<html><body>{}</body></html>"
 LOGIN = """<h1>Sign in</h1>{error}
@@ -37,18 +60,39 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", f"li_at={cookie}; Path=/")
         if location:
             self.send_header("Location", location)
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
         self.wfile.write(PAGE.format(body).encode())
 
     def _form(self):
         n = int(self.headers.get("Content-Length", 0))
-        return {k: v[0] for k, v in parse_qs(self.rfile.read(n).decode()).items()}
+        body = self.rfile.read(n)
+        ctype = self.headers.get("Content-Type", "")
+        if ctype.startswith("application/json"):
+            return json.loads(body or b"{}")
+        if ctype.startswith("multipart/form-data"):
+            msg = BytesParser(policy=HTTP).parsebytes(b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + body)
+            out: dict = {}
+            for part in msg.iter_parts():
+                name = part.get_param("name", header="content-disposition")
+                filename = part.get_filename()
+                payload = part.get_payload(decode=True) or b""
+                value = f"file:{filename}:{len(payload)}" if filename else payload.decode(errors="ignore")
+                if name in out:  # checkbox groups send several values
+                    out[name] = out[name] if isinstance(out[name], list) else [out[name]]
+                    out[name].append(value)
+                else:
+                    out[name] = value
+            return out
+        return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(body.decode()).items()}
 
     def _logged_in(self):
         return "li_at=ok" in (self.headers.get("Cookie") or "")
 
     def do_GET(self):
+        path = self.path.split("?")[0]
+        if path in ROUTES:
+            return self._send((PAGES / ROUTES[path]).read_text().replace("<html><body>", "").replace("</body></html>", ""))
         if self.path.startswith("/login"):
             return self._send(LOGIN.format(error=""))
         if self.path.startswith("/feed"):
@@ -63,6 +107,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         f = self._form()
+        if self.path.startswith("/submit/"):
+            site = self.path.split("/")[2]
+            SUBMISSIONS.setdefault(site, []).append(f)
+            return self._send(THANKS.get(site, "ok"))
         if self.path == "/do-login":
             if f.get("session_password") != "right":
                 return self._send(LOGIN.format(error='<div id=error-for-password>Wrong password. Try again.</div>'))

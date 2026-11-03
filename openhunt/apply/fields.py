@@ -39,5 +39,5 @@ class FormField:
 
 
 def is_placeholder(option: str) -> bool:
-    low = option.strip().lower().rstrip(".…")
+    low = option.strip().lower().rstrip(".… ")
     return not low or low in _PLACEHOLDER or low.startswith(("select an", "select one", "please choose"))

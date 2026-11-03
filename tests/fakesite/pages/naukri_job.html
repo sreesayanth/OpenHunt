@@ -1,0 +1,31 @@
+<html><body><h1 class="jd-header-title">Data Analyst</h1><div class="jd-header-comp-name">Acme Analytics</div>
+<button id="apply-button" class="apply-button" onclick="start()">Apply</button>
+<div id="applied" style="display:none"><span class="apply-message">You have successfully applied to this job.</span></div>
+<div class="chatbot_Drawer" id="drawer" style="display:none"><div class="chatbot_MessageContainer" id="msgs"></div>
+ <div class="chatbot_InputContainer" id="inp"></div>
+ <div class="sendMsgbtn_container"><div class="sendMsg" onclick="save()">Save</div></div></div>
+<script>
+const qs = [
+  {q: 'How many years of experience do you have in Python?', type: 'text'},
+  {q: 'Are you willing to relocate to Bangalore?', type: 'radio', opts: ['Yes', 'No']},
+  {q: 'What is your current CTC in lakhs?', type: 'text'},
+];
+let k = 0; const got = {};
+function start() { document.getElementById('drawer').style.display = 'block'; ask(); }
+function ask() {
+  const m = document.createElement('div'); m.className = 'botItem chatbot_ListItem'; m.innerHTML = '<div class="botMsg msg"><span>' + qs[k].q + '</span></div>';
+  document.getElementById('msgs').appendChild(m);
+  const inp = document.getElementById('inp');
+  if (qs[k].type === 'text') inp.innerHTML = '<div class="textArea" contenteditable="true" data-placeholder="Type message here..."></div>';
+  else inp.innerHTML = '<div class="ssrc__radio-btn-container">' + qs[k].opts.map((o, i) =>
+     '<div class="ssrc__radio-btn"><input type="radio" class="ssrc__radio" id="r' + i + '" name="r" value="' + o + '"><label for="r' + i + '" class="ssrc__label">' + o + '</label></div>').join('') + '</div>';
+}
+async function save() {
+  const t = document.querySelector('#inp .textArea'), r = document.querySelector('#inp input:checked');
+  const v = t ? t.innerText.trim() : (r ? r.value : ''); if (!v) return;
+  got[qs[k].q] = v; const u = document.createElement('div'); u.className = 'userItem'; u.innerText = v; document.getElementById('msgs').appendChild(u);
+  k++; if (k < qs.length) { ask(); return; }
+  await fetch('/submit/naukri', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(got)});
+  document.getElementById('drawer').style.display = 'none'; document.getElementById('applied').style.display = 'block';
+  document.getElementById('apply-button').innerText = 'Applied'; }
+</script></body></html>

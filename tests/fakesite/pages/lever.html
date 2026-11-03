@@ -1,0 +1,32 @@
+<html><body><div class="application-page">
+<form id="application-form" method="post" action="/submit/lever" enctype="multipart/form-data">
+<h4>Submit your application</h4>
+<ul>
+ <li class="application-question resume"><label><div class="application-label">Resume/CV<span class="required">✱</span></div>
+   <div class="application-field"><a class="visible-resume-upload">ATTACH RESUME/CV</a><input type="file" name="resume" id="resume-upload-input" style="opacity:0;position:absolute;width:1px;height:1px"></div></label></li>
+ <li class="application-question"><label><div class="application-label">Full name<span class="required">✱</span></div><div class="application-field"><input type="text" name="name" required></div></label></li>
+ <li class="application-question"><label><div class="application-label">Email<span class="required">✱</span></div><div class="application-field"><input type="email" name="email" required></div></label></li>
+ <li class="application-question"><label><div class="application-label">Phone</div><div class="application-field"><input type="text" name="phone"></div></label></li>
+ <li class="application-question"><label><div class="application-label">Current company</div><div class="application-field"><input type="text" name="org"></div></label></li>
+</ul>
+<h4>Links</h4><ul>
+ <li class="application-question"><label><div class="application-label">LinkedIn URL</div><div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label></li>
+</ul>
+<div class="application-additional"><ul>
+ <li class="application-question custom-question"><div class="application-label full-width"><div class="text">Are you willing to relocate to Bangalore?<span class="required">✱</span></div></div>
+  <div class="application-field full-width"><ul data-qa="multiple-choice">
+   <li><label><input type="radio" name="cards[abc][field0]" value="Yes" required><span class="application-answer-alternative">Yes</span></label></li>
+   <li><label><input type="radio" name="cards[abc][field0]" value="No"><span class="application-answer-alternative">No</span></label></li></ul></div></li>
+ <li class="application-question custom-question"><div class="application-label"><div class="text">What is your notice period?<span class="required">✱</span></div></div>
+  <div class="application-field"><input type="text" name="cards[abc][field1]" required></div></li>
+ <li class="application-question custom-question"><div class="application-label"><div class="text">Which of these have you used?</div></div>
+  <div class="application-field"><ul>
+   <li><label><input type="checkbox" name="cards[abc][field2]" value="Python"><span>Python</span></label></li>
+   <li><label><input type="checkbox" name="cards[abc][field2]" value="Go"><span>Go</span></label></li></ul></div></li>
+</ul></div>
+<div class="eeo-section"><ul>
+ <li class="application-question"><div class="application-label">Gender</div><div class="application-field"><select name="eeo[gender]"><option value="">Select ...</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div></li>
+</ul></div>
+<div class="application-question"><div class="application-label">Additional information</div><textarea name="comments" placeholder="Add a cover letter or anything else you want to share."></textarea></div>
+<button type="submit" class="template-btn-submit" id="btn-submit">Submit application</button>
+</form></div></body></html>

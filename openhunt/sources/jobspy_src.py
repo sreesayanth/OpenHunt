@@ -1,7 +1,8 @@
 """LinkedIn, Indeed, Glassdoor, Naukri... through the python-jobspy library.
 
 Personal, low-volume use only: these sites block heavy traffic and LinkedIn's terms forbid
-automation, so we only *search* public listings (no login) and never apply automatically.
+automation, so searching uses public listings with no login. Applying is separate and opt-in
+(see openhunt/apply).
 """
 
 import asyncio
@@ -69,6 +70,7 @@ class JobSpySource:
                     remote=bool(row.get("is_remote")) if _clean(row.get("is_remote")) else False,
                     salary=_salary(row),
                     description=_clean(row.get("description")),
+                    apply_url=_clean(row.get("job_url_direct")),
                     posted_at=datetime.combine(posted, datetime.min.time()) if hasattr(posted, "year") else None,
                 )
             )

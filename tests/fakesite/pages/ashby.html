@@ -1,0 +1,33 @@
+<html><body><div class="ashby-application-form-container">
+<h1>Product Analyst</h1>
+<form id="ashby-form" onsubmit="return send(event)">
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_name">Name<span>*</span></label><input id="_systemfield_name" name="_systemfield_name" required></div>
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_email">Email<span>*</span></label><input id="_systemfield_email" type="email" name="_systemfield_email" required></div>
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_resume">Resume<span>*</span></label>
+   <div class="upload"><input id="_systemfield_resume" type="file" name="_systemfield_resume" style="display:none"><button type="button" class="upload-btn" onclick="document.getElementById('_systemfield_resume').click()">Upload File</button></div></div>
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="loc">Location<span>*</span></label>
+   <input id="loc" role="combobox" aria-autocomplete="list" aria-controls="loc-list" autocomplete="off" name="location">
+   <ul id="loc-list" role="listbox"></ul></div>
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title">Will you now or in the future require visa sponsorship?<span>*</span></label>
+   <div class="_yesno_hk"><button type="button" class="_option" onclick="pick(this,'visa')">Yes</button><button type="button" class="_option" onclick="pick(this,'visa')">No</button></div></div>
+ <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="yrs">Years of professional experience<span>*</span></label><input id="yrs" type="number" name="years" required></div>
+ <button type="submit" class="ashby-application-form-submit-button">Submit Application</button>
+</form>
+<div id="done" style="display:none"><h2>Thanks for applying!</h2><p>Your application was successfully submitted.</p></div>
+</div>
+<script>
+const answers = {};
+function pick(btn, key) { for (const b of btn.parentElement.children) { b.setAttribute('aria-pressed', 'false'); b.className = '_option'; }
+  btn.setAttribute('aria-pressed', 'true'); btn.className = '_option _active'; answers[key] = btn.innerText; }
+const cities = ['Bengaluru, Karnataka, India', 'Bengal, India', 'Mumbai, Maharashtra, India', 'Pune, Maharashtra, India'];
+const loc = document.getElementById('loc'), list = document.getElementById('loc-list');
+loc.addEventListener('input', () => { list.innerHTML = ''; const q = loc.value.toLowerCase(); if (!q) return;
+  for (const c of cities.filter(c => c.toLowerCase().includes(q.slice(0, 4)))) { const li = document.createElement('li'); li.setAttribute('role', 'option'); li.innerText = c;
+    li.onclick = () => { loc.value = c; answers.location = c; list.innerHTML = ''; }; list.appendChild(li); } });
+async function send(e) { e.preventDefault(); const f = document.getElementById('ashby-form');
+  const body = {name: f._systemfield_name.value, email: f._systemfield_email.value, years: f.years.value,
+    resume: f._systemfield_resume.files.length ? f._systemfield_resume.files[0].name : '', ...answers};
+  if (!body.resume || !body.visa || !body.location) { alert('missing'); return false; }
+  await fetch('/submit/ashby', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  f.style.display = 'none'; document.getElementById('done').style.display = 'block'; return false; }
+</script></body></html>

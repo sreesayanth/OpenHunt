@@ -1,0 +1,15 @@
+<html><body><h1>Apply: Junior Data Scientist</h1>
+<form id="f" action="/submit/generic" method="post" enctype="multipart/form-data" onsubmit="return check()">
+ <p><label for="fn">Full name *</label><input id="fn" name="full_name"></p>
+ <p><label for="em">E-mail address *</label><input id="em" name="email" type="email"></p>
+ <p><label for="ph">Mobile number *</label><input id="ph" name="phone" type="tel"></p>
+ <p><label for="cv">Upload your CV *</label><input id="cv" name="cv" type="file"></p>
+ <div class="field"><label for="hours">Preferred working hours</label><input id="hours" name="hours"><span class="error" id="hours-err" style="display:none">This field is required</span></div>
+ <p><label for="cl">Cover letter (optional)</label><textarea id="cl" name="cover"></textarea></p>
+ <p><label><input type="checkbox" name="privacy" value="1"> I agree to the privacy policy *</label></p>
+ <button type="submit">Send application</button>
+</form>
+<script>
+function check() { const h = document.getElementById('hours'); if (!h.value) { h.setAttribute('aria-invalid', 'true');
+  document.getElementById('hours-err').style.display = 'inline'; return false; } return true; }
+</script></body></html>

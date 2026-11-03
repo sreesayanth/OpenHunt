@@ -30,6 +30,7 @@ class RawJob:
     salary: str = ""
     description: str = ""
     posted_at: datetime | None = None
+    apply_url: str = ""  # direct link to the company's application page, if known
 
     @property
     def fingerprint(self) -> str:

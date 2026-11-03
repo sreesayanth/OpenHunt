@@ -90,7 +90,7 @@ INTENTS: list[Intent] = [
     Intent(
         "city", "text", "City you live in",
         (r"\b(?:current |present )?(?:city|location)\b", r"where are you (?:currently )?(?:based|located|living)", r"city of residence"),
-        fields=SHORT,
+        fields=TEXTY | {"select"},  # not yes/no questions like "OK commuting to this location?"
     ),
     Intent("current_title", "text", "Current job title", (r"current (?:job )?(?:title|role|position|designation)",), fields=SHORT),
     Intent("current_company", "text", "Current company", (r"current (?:company|employer|organi[sz]ation)", r"(?:company|employer) name$"), fields=SHORT),

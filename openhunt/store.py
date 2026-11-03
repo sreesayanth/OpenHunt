@@ -39,6 +39,7 @@ class Job(SQLModel, table=True):
     remote: bool = False
     salary: str = ""
     description: str = ""
+    apply_url: str = ""  # the company's own application page, when the board gives it
     posted_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=utcnow)
 
@@ -51,6 +52,28 @@ class Match(SQLModel, table=True):
     missing: str = ""  # comma separated skills
     status: str = "new"  # new | notified | saved | dismissed | applied
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class Application(SQLModel, table=True):
+    """One job OpenHunt applies to (see openhunt/apply/engine.py and queue.py)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    job_id: int = Field(foreign_key="job.id", index=True, unique=True)
+    url: str = ""
+    site: str = ""  # adapter name: greenhouse | lever | ashby | linkedin | naukri | generic
+    company: str = ""
+    title: str = ""
+    status: str = Field(default="queued", index=True)
+    # queued | running | waiting (for the user's answers) | submitted | needs_login | needs_you
+    # | closed | already | unsupported | failed | skipped
+    source: str = "auto"  # auto (Autopilot) | manual (the user asked)
+    attempts: int = 0
+    message: str = ""  # last problem, in plain words
+    answers: str = "[]"  # JSON: what was filled in, for "what did I tell this company?"
+    proof_path: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    submitted_at: datetime | None = None
 
 
 class Answer(SQLModel, table=True):
@@ -97,6 +120,26 @@ engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread"
 
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Older databases get new columns added in place, so upgrading never loses data."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                kind = col.type.compile(dialect=engine.dialect)
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                literal = "NULL" if default is None else repr(default) if isinstance(default, str) else str(int(default) if isinstance(default, bool) else default)
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {kind} DEFAULT {literal}'))
 
 
 def session() -> Session:
