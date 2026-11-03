@@ -17,11 +17,17 @@ COMMON_SKILLS = [
 ]
 
 SYSTEM = """You extract a job seeker's profile from their CV or self-description.
-Never invent facts that are not in the text.
+Never invent facts that are not in the text. Leave a key out when the text doesn't say.
 JSON keys: name (string), headline (short string), years_experience (number),
 skills (list of strings), titles (list of 3-5 job titles this person should search for),
 locations (list of strings found in the text), languages (list of strings),
-summary (2 sentences, written without he/she pronouns)."""
+summary (2 sentences, written without he/she pronouns),
+email (string), phone (string, with country code if shown), city (string), country (string),
+linkedin (url), github (url), portfolio (url), current_title (string), current_company (string),
+highest_degree (string, e.g. "B.Tech in Computer Science"), degree_field (string), school (string),
+graduation_year (number),
+skill_years (object: skill -> years of experience, counted from the job dates in the text;
+only for skills where the dates make it clear, rounded to 0.5)."""
 
 
 def extract_text(data: bytes, filename: str) -> str:

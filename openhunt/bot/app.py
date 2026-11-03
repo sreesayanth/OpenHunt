@@ -20,7 +20,7 @@ from telegram.ext import (
 from openhunt import store
 from openhunt.ai import cli_providers, llm, openrouter
 from openhunt.ai.profile import build_profile, extract_text
-from openhunt.bot import scheduler
+from openhunt.bot import apply_flow, scheduler
 from openhunt.bot.cards import SCHEDULE_BUTTONS, job_card, keyboard
 from openhunt.hunt import HuntResult, run_hunt
 
@@ -36,6 +36,7 @@ COMMANDS = [
     ("schedule", "When I search"),
     ("pause", "Pause automatic searching"),
     ("resume", "Resume automatic searching"),
+    ("answers", "What I know about you"),
     ("ai", "Connect or change AI"),
     ("status", "Is everything working?"),
     ("help", "What can I do?"),
@@ -150,6 +151,7 @@ def main_menu() -> InlineKeyboardMarkup:
     return keyboard(
         [("🔎 Search now", "menu:search"), ("🏆 Today's best", "menu:today")],
         [("⭐ Saved", "menu:saved"), ("⚙️ Profile", "menu:profile")],
+        [("🧠 What I know about you", "menu:answers")],
     )
 
 
@@ -266,7 +268,10 @@ async def report_hunt(bot: Bot, result: HuntResult, manual: bool) -> None:
 @only_owner
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lines = [f"/{c} – {d}" for c, d in COMMANDS]
-    await update.message.reply_text("Here's what I can do:\n\n" + "\n".join(lines) + "\n\n📄 Send a new CV any time to update your profile.")
+    await update.message.reply_text(
+        "Here's what I can do:\n\n" + "\n".join(lines) + "\n\n📄 Send a new CV any time to update your profile."
+        "\n✏️ Tell me changes any time, like “my notice period is now 30 days”."
+    )
 
 
 @only_owner
@@ -348,6 +353,11 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 @only_owner
+async def cmd_answers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await apply_flow.show_answers(context.bot, update.effective_chat.id)
+
+
+@only_owner
 async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"🧠 AI: {llm.describe()}\nChoose one:", reply_markup=ai_menu())
 
@@ -384,6 +394,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
     kind, _, arg = q.data.partition(":")
 
+    if kind in apply_flow.KINDS:
+        await apply_flow.handle_button(update, context)
+        return
+
     if kind == "m":
         action, _, mid = arg.partition(":")
         store.set_match_status(int(mid), "saved" if action == "save" else "dismissed")
@@ -405,6 +419,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await show_list(chat_id, bot, ("saved",), "No saved jobs yet.")
         elif arg == "profile":
             await show_profile(chat_id, bot)
+        elif arg == "answers":
+            await apply_flow.show_answers(bot, chat_id)
         return
 
     if kind == "sched":
@@ -537,6 +553,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current = step()
     prefs = store.get("prefs") or {}
 
+    # A reply to a job-form question on screen (never while an AI key is being pasted).
+    if current not in ("ai_code", "ai_key") and await apply_flow.handle_text(update, context):
+        return
+
     if current in ("ai_code", "ai_key"):
         # Don't leave secrets sitting in the chat history.
         try:
@@ -575,12 +595,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         prefs["min_salary"] = text[:40]
         store.put("prefs", prefs)
         await continue_onboarding(chat_id, bot)
-    else:
+    elif not await apply_flow.handle_update_text(update, context):  # "my notice period is now 15 days"
         await bot.send_message(chat_id, "Tap a button below, or type /help.", reply_markup=main_menu())
 
 
 @only_owner
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if await apply_flow.handle_document(update, context):  # a file a job form asked for
+        return
     doc = update.message.document
     name = (doc.file_name or "").lower()
     if not name.endswith((".pdf", ".docx", ".txt")):
@@ -598,6 +620,8 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "Try another file, or just type about yourself."
         )
         return
+    # Keep the file itself: job forms ask for it as an upload.
+    store.put("cv_file", store.save_file(doc.file_name or "cv.pdf", bytes(data), folder="cv"))
     await save_profile_from_text(update.effective_chat.id, context.bot, text)
 
 
@@ -628,7 +652,7 @@ def build_application(token: str) -> Application:
     for name, fn in [
         ("help", cmd_help), ("search", cmd_search), ("today", cmd_today), ("saved", cmd_saved),
         ("profile", cmd_profile), ("schedule", cmd_schedule), ("pause", cmd_pause),
-        ("resume", cmd_resume), ("ai", cmd_ai), ("status", cmd_status),
+        ("resume", cmd_resume), ("answers", cmd_answers), ("ai", cmd_ai), ("status", cmd_status),
     ]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))

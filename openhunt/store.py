@@ -5,9 +5,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from cryptography.fernet import Fernet
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from openhunt.config import DB_PATH, KEY_PATH
+from openhunt.config import DB_PATH, FILES_DIR, KEY_PATH
 
 # Settings whose values are encrypted at rest.
 SECRET_KEYS = {"bot_token", "ai_api_key"}
@@ -45,6 +46,45 @@ class Match(SQLModel, table=True):
     missing: str = ""  # comma separated skills
     status: str = "new"  # new | notified | saved | dismissed | applied
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class Answer(SQLModel, table=True):
+    """Something the user told us once, reused on every later form (see openhunt/apply/answers.py)."""
+
+    __table_args__ = (UniqueConstraint("key", "company"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    key: str = Field(index=True)  # intent key like "years_with:tableau", or "q:<words>" for other questions
+    company: str = ""  # "" = used for every company
+    title: str = ""  # plain-language name shown in "What I know about you"
+    question: str = ""  # the latest wording seen on a form
+    value: str = "{}"  # JSON typed value, see openhunt/apply/values.py
+    source: str = "chat"  # chat | cv | default
+    use_count: int = 0
+    last_used_at: datetime | None = None
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class PendingQuestion(SQLModel, table=True):
+    """A form question waiting for the user's answer in Telegram."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    key: str = Field(index=True)
+    company: str = ""  # set when the answer is kept for this company only
+    job_company: str = ""  # shown in the question header
+    job_title: str = ""
+    site: str = ""
+    title: str = ""
+    kind: str = "text"  # value kind to ask for: num | bool | days | money | text | degree | decline | choices | file
+    field: str = "{}"  # JSON FormField
+    choices: str = "[]"  # JSON [[button label, value], ...]
+    application_ids: str = "[]"  # JSON; every job waiting on this answer
+    status: str = Field(default="waiting", index=True)  # waiting | shown | answered | skipped
+    chat_id: int | None = None
+    message_id: int | None = None
+    answer_id: int | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    answered_at: datetime | None = None
 
 
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
@@ -144,5 +184,21 @@ def retire_matches() -> int:
 
 
 def reset_all() -> None:
+    import shutil
+
     SQLModel.metadata.drop_all(engine)
+    shutil.rmtree(FILES_DIR, ignore_errors=True)
     init_db()
+
+
+def save_file(name: str, data: bytes, folder: str = "") -> str:
+    """Keep a file the user sent (CV, transcript…) so it can be uploaded to job forms later."""
+    import re
+
+    safe = re.sub(r"[^\w.-]+", "_", name).strip("._") or "file"
+    target = FILES_DIR / folder if folder else FILES_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    target.chmod(0o700)
+    path = target / safe
+    path.write_bytes(data)
+    return str(path)

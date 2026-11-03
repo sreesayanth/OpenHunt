@@ -56,6 +56,7 @@ Run `termux-wake-lock` so Android doesn't stop it. Use a cloud AI (not Ollama) o
 | `/profile` | Change jobs, places, salary, or send a new CV |
 | `/schedule` | Every morning, twice a day, or every hour |
 | `/pause` / `/resume` | Stop and start automatic searching |
+| `/answers` | What I know about you: the answers I'll use on job forms. Change any of them, or just type *"my notice period is now 30 days"* |
 | `/ai` | Connect or change AI |
 | `/status` | Check everything works |
 

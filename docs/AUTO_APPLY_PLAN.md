@@ -318,7 +318,7 @@ When a job is submitted, the existing `Match.status` becomes `applied`.
 
 | Phase | Deliverable | Done when |
 |---|---|---|
-| **A. Answer memory** | `fields.py`, `answers.py`, `intents.py`, tables, CV → answers, chat questions with buttons, "what I know about you", typed changes | One question in 5 wordings → asked once; answers fit number, dropdown and radio fields |
+| **A. Answer memory** ✅ done | `fields.py`, `answers.py`, `intents.py`, tables, CV → answers, chat questions with buttons, "what I know about you", typed changes | One question in 5 wordings → asked once; answers fit number, dropdown and radio fields |
 | **B. Hidden browser + chat login** | `browser.py`, automatic Chromium download, login by chat (email, password, code, app approval), messages deleted, sessions saved | LinkedIn and Naukri log in entirely from the chat |
 | **C. Company career sites** | Greenhouse, Lever, Ashby adapters, `engine.py`, parking, proof | A real Greenhouse job is applied to in the background; the user only answers new questions |
 | **D. LinkedIn Easy Apply + Naukri** | adapters, `guard.py`, following external apply links | 10 jobs in a row; the second 10 need no questions |
