@@ -324,6 +324,27 @@ When a job is submitted, the existing `Match.status` becomes `applied`.
 - Saved logins are checked every 6 hours. If a site logged OpenHunt out, it logs in again by itself with a
   remembered password, or asks the user with a one-tap "Log in again" button.
 
+### Phases C–E notes (what was built)
+- **One form reader for every site** (`apply/forms.py`): a script in the page finds each question, reads
+  its label the way a person would, and tags it for filling. Site adapters (`apply/adapters/`) only add
+  what's special: Lever's `/apply` page, Ashby's yes/no buttons, LinkedIn's pop-up steps and its
+  "follow company" box (unticked), Naukri's question chat.
+- **Engine** (`apply/engine.py`): fills page by page, writes essay answers with the AI, batches every
+  unknown question of a page into one round, reads the form again after a refused submit (so a field the
+  site forgot to mark as required still gets answered), and only counts success after submit when a
+  thank-you message shows and the form is gone. A screenshot is kept as proof.
+- **Queue** (`apply/queue.py`) and **worker** (`bot/autopilot.py`): the user's own requests go first and
+  at any hour. Autopilot jobs go one at a time, 1–3 minutes apart, 9:00–21:00, within daily limits per
+  site. A company link from the job board is preferred over LinkedIn/Naukri (no login, no account risk).
+  Answering a question resumes the waiting jobs at once.
+- **For people who never sent a CV file**, a plain one-page PDF is made from the profile (`apply/cvpdf.py`).
+- **Not done yet:** CAPTCHA solving inside Telegram (phase F; for now the user gets a screenshot and a link),
+  and sites that need an account per company (Workday, Taleo, iCIMS) or block bots (Indeed, Glassdoor),
+  which are left to the user with an "Apply yourself" link.
+- **Tested** against local copies of each site's form (`tests/fakesite/pages`), never against the real sites
+  from the build machine. The field names come from how these sites build their forms and need a check on
+  the live sites.
+
 ---
 
 ## 11. Build phases
@@ -332,11 +353,11 @@ When a job is submitted, the existing `Match.status` becomes `applied`.
 |---|---|---|
 | **A. Answer memory** ✅ done | `fields.py`, `answers.py`, `intents.py`, tables, CV → answers, chat questions with buttons, "what I know about you", typed changes | One question in 5 wordings → asked once; answers fit number, dropdown and radio fields |
 | **B. Hidden browser + chat login** ✅ done | `browser.py`, automatic Chromium download, login by chat (email, password, code, app approval), messages deleted, sessions saved | LinkedIn and Naukri log in entirely from the chat |
-| **C. Company career sites** | Greenhouse, Lever, Ashby adapters, `engine.py`, parking, proof | A real Greenhouse job is applied to in the background; the user only answers new questions |
-| **D. LinkedIn Easy Apply + Naukri** | adapters, `guard.py`, following external apply links | 10 jobs in a row; the second 10 need no questions |
-| **E. Autopilot** | `queue.py`, auto-pick from hunts, limits, pacing, daily summary, pause/resume, typed commands | Applies overnight within limits and sends one morning summary |
+| **C. Company career sites** ✅ done | Greenhouse, Lever, Ashby adapters, `engine.py`, parking, proof | A real Greenhouse job is applied to in the background; the user only answers new questions |
+| **D. LinkedIn Easy Apply + Naukri** ✅ done | adapters, `guard.py`, following external apply links | 10 jobs in a row; the second 10 need no questions |
+| **E. Autopilot** ✅ done | `queue.py`, auto-pick from hunts, limits, pacing, daily summary, pause/resume, typed commands | Applies overnight within limits and sends one morning summary |
 | **F. CAPTCHA in Telegram** | `miniapp.py`, temporary tunnel, signed access, picture-CAPTCHA by chat | A CAPTCHA is solved without leaving Telegram |
-| **G. More sites** | Indeed, Workday, `generic.py` AI adapter | An unknown career site is completed by the AI adapter |
+| **G. More sites** (generic adapter ✅; Indeed/Workday left to the user) | Indeed, Workday, `generic.py` AI adapter | An unknown career site is completed by the AI adapter |
 
 **Testing:** saved copies of each site's forms in `tests/fixtures/forms/`, filled by the real
 adapters in headless Chromium without network access. A developer-only `--dry-run` mode fills

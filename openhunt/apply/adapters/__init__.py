@@ -11,7 +11,11 @@ ADAPTERS: list[Adapter] = [Greenhouse(), Lever(), Ashby(), LinkedInEasyApply(), 
 GENERIC = Adapter()
 
 # Sites that block automated browsers or need an account we don't support: the user applies there.
-UNSUPPORTED_HOSTS = ("indeed.", "glassdoor.", "ziprecruiter.", "monster.", "wellfound.com", "angel.co", "instahyre.com")
+UNSUPPORTED_HOSTS = (
+    "indeed.", "glassdoor.", "ziprecruiter.", "monster.", "wellfound.com", "angel.co", "instahyre.com",
+    # These make you create an account with a password for every company.
+    "myworkdayjobs.com", "workday.com", "taleo.net", "successfactors.", "icims.com", "brassring.com",
+)
 
 
 def pick(url: str) -> Adapter | None:

@@ -30,6 +30,7 @@ class Outcome:
     filled: list[dict] = field(default_factory=list)
     proof: bytes | None = None
     redirect: str = ""  # the job is applied to on another site (e.g. LinkedIn → company site)
+    page_title: str = ""  # the job title as the page shows it (for links the user pasted)
 
 
 @dataclass
@@ -121,9 +122,32 @@ async def apply(page, adapter: Adapter, job: Job, dry_run: bool = False) -> Outc
                                 "unsupported": "I couldn't find an application form on this page.",
                                 "needs_login": "I need to be logged in."}.get(opened, opened))
     page = opened
+    page_title = await _page_title(page)
+    if not job.description:  # a pasted link: the page itself describes the job (used for essay answers)
+        job.description = (await adapter.body(page))[:6000]
+    if not job.title or job.title == "Job you sent":
+        job.title = page_title or job.title
     if hasattr(adapter, "run"):  # sites with their own flow (e.g. Naukri's question chat)
-        return await adapter.run(page, job, dry_run)
+        out = await adapter.run(page, job, dry_run)
+        out.page_title = page_title
+        return out
+    out = await _steps(page, adapter, job, dry_run)
+    out.page_title = page_title
+    return out
 
+
+async def _page_title(page) -> str:
+    try:
+        h1 = page.locator("h1:visible").first
+        text = (await h1.inner_text(timeout=2000)).strip() if await h1.count() else ""
+        text = text or (await page.title()).strip()
+    except Exception:  # noqa: BLE001
+        return ""
+    text = re.sub(r"^(?:apply(?: for)?|job application for)[:\s]+", "", text, flags=re.I)
+    return re.split(r"\s+(?:at|@|\||-|–)\s+", text)[0][:80]
+
+
+async def _steps(page, adapter: Adapter, job: Job, dry_run: bool) -> Outcome:
     essays: dict[str, str] = {}
     all_filled: list[dict] = []
     stuck = 0

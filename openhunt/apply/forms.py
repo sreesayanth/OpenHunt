@@ -176,6 +176,11 @@ READ_JS = r"""
                  value: clean((kids.find(k => k.getAttribute('aria-pressed') === 'true' || /active|selected/i.test(k.className)) || {}).innerText || '') });
     }
   }
+  // Remember which <form> holds the questions, so "Next"/"Submit" is looked for there only.
+  const firstEl = out.length && document.querySelector(`[data-oh-id="${out[0].ids[0]}"]`);
+  const form = firstEl && firstEl.closest('form');
+  document.querySelectorAll('[data-oh-form]').forEach(f => f.removeAttribute('data-oh-form'));
+  if (form) form.setAttribute('data-oh-form', '1');
   document.body.setAttribute('data-oh-next', String(n));
   return out;
 }

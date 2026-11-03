@@ -72,6 +72,7 @@ class Adapter:
         """Go to the application form. Returns the page with the form (may be a new tab), or a status string."""
         await page.goto(self.form_url(url), wait_until="domcontentloaded")
         await settle(page)
+        await dismiss_cookies(page)
         if st := await self.state(page):
             return st
         frame_src = await page.evaluate(
@@ -94,17 +95,24 @@ class Adapter:
             page = await click_maybe_new_page(page, button)
         return page if await has_form(page, self.form_scope) else "unsupported"
 
+    async def _scope(self, page) -> str:
+        if self.form_scope:
+            return self.form_scope
+        return "[data-oh-form]" if await page.locator("[data-oh-form]").count() else ""
+
     async def before_submit(self, page) -> None:
         """Last chance to change things on the final step (e.g. untick 'follow this company')."""
 
     async def next(self, page) -> str:
         """Press the button that moves the application on: 'next', 'submit', or '' if there is none."""
-        button = await find_button(page, NEXT_BUTTON, scope=self.form_scope)
+        await dismiss_cookies(page)
+        scope = await self._scope(page)
+        button = await find_button(page, NEXT_BUTTON, scope=scope)
         if button:
             await button.click()
             await settle(page)
             return "next"
-        button = await find_submit(page, self.form_scope)
+        button = await find_submit(page, scope)
         if not button:
             return ""
         await self.before_submit(page)
@@ -113,7 +121,8 @@ class Adapter:
         return "submit"
 
     async def is_final_step(self, page) -> bool:
-        return not await find_button(page, NEXT_BUTTON, scope=self.form_scope) and bool(await find_submit(page, self.form_scope))
+        scope = await self._scope(page)
+        return not await find_button(page, NEXT_BUTTON, scope=scope) and bool(await find_submit(page, scope))
 
 
 async def settle(page, ms: int = 1200) -> None:
@@ -122,6 +131,26 @@ async def settle(page, ms: int = 1200) -> None:
     except Exception:  # noqa: BLE001
         pass
     await page.wait_for_timeout(ms)
+
+
+COOKIE_BUTTON = re.compile(r"^\s*(?:accept(?: all)?(?: cookies)?|allow all(?: cookies)?|i agree|agree|got it|ok|okay)\s*$", re.I)
+
+
+async def dismiss_cookies(page) -> None:
+    """Close a cookie banner so it doesn't cover the form's buttons."""
+    try:
+        banner = page.locator("[id*=cookie i]:visible, [class*=cookie i]:visible, [id*=consent i]:visible, [class*=consent i]:visible, [id*=gdpr i]:visible").first
+        if not await banner.count():
+            return
+        buttons = banner.locator("button:visible, a[role=button]:visible")
+        for i in range(min(await buttons.count(), 8)):
+            b = buttons.nth(i)
+            if COOKIE_BUTTON.match((await b.inner_text(timeout=1000)) or ""):
+                await b.click(timeout=3000)
+                await page.wait_for_timeout(400)
+                return
+    except Exception:  # noqa: BLE001 - no banner, or it went away by itself
+        pass
 
 
 async def has_form(page, scope: str = "") -> bool:
@@ -178,7 +207,7 @@ async def click_maybe_new_page(page, button):
     await button.click()
     await settle(page)
     if len(context.pages) > before:
-        new = context.pages[-1]
-        await settle(new)
-        return new
+        page = context.pages[-1]
+        await settle(page)
+    await dismiss_cookies(page)
     return page

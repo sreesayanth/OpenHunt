@@ -617,6 +617,9 @@ async def choose_ai(chat_id: int, bot: Bot, provider: str) -> None:
 
 # ---------- free text & files ----------
 
+TYPED_STEPS = ("ai_code", "ai_key", "about", "cv", "titles", "locations", "salary")
+
+
 @only_owner
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # A login waiting for an email, password or code comes first: those messages are deleted at once.
@@ -628,8 +631,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current = step()
     prefs = store.get("prefs") or {}
 
-    # A reply to a job-form question on screen (never while an AI key is being pasted).
-    if current not in ("ai_code", "ai_key") and await apply_flow.handle_text(update, context):
+    # A reply to a job-form question on screen, unless the user just started typing something
+    # else for me (a new salary, job titles, an AI key…): that comes first.
+    if current not in TYPED_STEPS and await apply_flow.handle_text(update, context):
         return
 
     if current in ("ai_code", "ai_key"):

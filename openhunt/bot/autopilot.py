@@ -105,7 +105,7 @@ async def process(bot: Bot, app_id: int) -> engine.Outcome | None:
         await _nag_login(bot, adapter.login_site)
         return None
     try:
-        await browser.ensure_ready()
+        await browser.ensure_ready(progress=lambda text: tell(bot, escape(text)))
     except BrowserUnavailable as exc:
         queue.set_status(app.id, "failed", message=str(exc))
         if not _state["browser_nag"]:
@@ -140,6 +140,14 @@ async def process(bot: Bot, app_id: int) -> engine.Outcome | None:
 
 
 async def handle(bot: Bot, app: Application, out: engine.Outcome) -> None:
+    if out.page_title and app.title in ("", "Job you sent"):
+        app = queue.set_status(app.id, app.status, title=out.page_title)
+        with store.session() as s:
+            job = s.get(Job, app.job_id)
+            if job and job.title == "Job you sent":
+                job.title = out.page_title
+                s.add(job)
+                s.commit()
     title = f"<b>{escape(app.title or 'the job')}</b> · {escape(app.company or adapters.by_name(app.site).label)}"
     filled = json.dumps(out.filled, default=str)
     if store.get("cv_generated") and not store.get("cv_generated_told"):
@@ -261,7 +269,7 @@ async def apply_match(bot: Bot, chat_id: int, match_id: int) -> None:
     if not app:
         return
     if app.status == "unsupported":
-        await bot.send_message(chat_id, "🔗 I can't apply on this site (it blocks bots). Tap Open & apply on the card.")
+        await bot.send_message(chat_id, "🔗 I can't apply on this site (it blocks bots or needs an account per company). Tap 🔗 Open on the card to apply there.")
     elif app.status == "submitted":
         await bot.send_message(chat_id, "✅ Already applied to this one.")
     elif app.status == "waiting":

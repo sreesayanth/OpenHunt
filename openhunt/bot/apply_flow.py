@@ -304,6 +304,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
     currency = pq.key.rsplit(":", 1)[-1].upper() if pq.kind == "money" else answers.default_currency()
     value = values.parse_reply(kind, text, currency)
     if value is None:
+        if kind == "bool" or len(text.split()) > 3:
+            return False  # not an answer (e.g. "my notice period is now 30 days"): let other handlers have it
         await update.message.reply_html(RETRY.get(pq.kind, "Please type your answer."))
         return True
     if value.get("t") == "money" and value.get("cur") != currency:
