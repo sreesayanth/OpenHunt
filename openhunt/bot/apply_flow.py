@@ -8,6 +8,7 @@
 
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from html import escape
 
@@ -293,6 +294,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
         store.delete("typing_q")
         return False
     text = update.message.text.strip()
+    asks_for_link = re.search(r"link|url|linkedin|github|portfolio|website|profile|blog", f"{pq.title} {pq.field}", re.I)
+    if re.fullmatch(r"https?://\S+", text) and not asks_for_link:
+        return False  # a pasted job link, not an answer: let the link handler apply to it
     if pq.kind == "file":
         await update.message.reply_text("Please send the file here (PDF or Word), or tap Skip.")
         return True

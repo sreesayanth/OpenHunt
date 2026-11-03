@@ -54,6 +54,10 @@ class Runtime:
 
     async def stop_bot(self) -> None:
         if self.bot_app:
+            from openhunt.bot import autopilot, login_flow
+
+            autopilot.stop()
+            login_flow.stop()
             await self.bot_app.updater.stop()
             await self.bot_app.stop()
             await self.bot_app.shutdown()

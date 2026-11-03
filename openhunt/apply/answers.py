@@ -206,7 +206,9 @@ def _derived(rec: Recognized, ctx: Context) -> tuple[dict, str] | None:
         general = _saved("eeo", "")  # the user changed the default for all of these questions
         return (json.loads(general.value), "chat") if general else ({"t": "decline"}, "default")
     if name == "resume":
-        path = store.get("cv_file")
+        from openhunt.apply.cvpdf import ensure_cv_file
+
+        path = ensure_cv_file()  # no CV sent? a simple one is made from the profile
         return ({"t": "file", "v": path}, "cv") if path and Path(path).exists() else None
     return None
 

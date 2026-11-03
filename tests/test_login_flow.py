@@ -138,12 +138,10 @@ async def test_logged_out_with_remembered_password_logs_in_again_by_itself():
     async with BROWSER.page("linkedin", site.base) as page:
         await page.context.clear_cookies()  # the site logged us out
 
-    tasks = []
-    app = SimpleNamespace(create_task=lambda coro, name=None: tasks.append(asyncio.create_task(coro)))
     bot = FakeBot()
-    await login_flow.check_sites(SimpleNamespace(bot=bot, application=app))
-    assert tasks
-    await asyncio.gather(*tasks)
+    await login_flow.check_sites(SimpleNamespace(bot=bot, application=None))
+    assert login_flow._tasks
+    await asyncio.gather(*login_flow._tasks)
     assert "logged me out, so I logged in again" in bot.texts() and login_flow.connected("linkedin")
 
 

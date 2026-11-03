@@ -20,7 +20,8 @@ from telegram.ext import (
 from openhunt import store
 from openhunt.ai import cli_providers, llm, openrouter
 from openhunt.ai.profile import build_profile, extract_text
-from openhunt.bot import apply_flow, login_flow, scheduler
+from openhunt.apply import browser
+from openhunt.bot import apply_flow, autopilot, login_flow, scheduler
 from openhunt.bot.cards import SCHEDULE_BUTTONS, job_card, keyboard
 from openhunt.hunt import HuntResult, run_hunt
 
@@ -29,6 +30,9 @@ log = logging.getLogger(__name__)
 DIGEST_SIZE = 5
 
 COMMANDS = [
+    ("autopilot", "Apply for me automatically"),
+    ("applied", "Applications I sent"),
+    ("apply", "Apply to a job link"),
     ("today", "Best jobs right now"),
     ("search", "Search for new jobs now"),
     ("saved", "Jobs you saved"),
@@ -131,6 +135,9 @@ async def continue_onboarding(chat_id: int, bot: Bot) -> None:
     elif not (store.get("schedule") or {}).get("mode"):
         set_step("schedule")
         await bot.send_message(chat_id, "⏰ When should I look for jobs?", reply_markup=SCHEDULE_BUTTONS)
+    elif not autopilot.offered() and not browser.is_android():
+        set_step(None)
+        await autopilot.offer(bot, chat_id)
     else:
         set_step(None)
         await bot.send_message(chat_id, menu_text(), parse_mode=ParseMode.HTML, reply_markup=main_menu())
@@ -152,14 +159,18 @@ def main_menu() -> InlineKeyboardMarkup:
     return keyboard(
         [("🔎 Search now", "menu:search"), ("🏆 Today's best", "menu:today")],
         [("⭐ Saved", "menu:saved"), ("⚙️ Profile", "menu:profile")],
+        [("🤖 Autopilot", "menu:autopilot"), ("📋 Applications", "menu:applied")],
         [("🧠 What I know about you", "menu:answers"), ("🔐 Job sites", "menu:sites")],
     )
 
 
 def menu_text() -> str:
+    applying = ("🤖 Autopilot is on: I apply to good matches for you.\n" if autopilot.autopilot_on()
+                else "Tap 🤖 Apply for me on any job, or paste a job link, and I'll apply.\n")
     return (
         "🎯 <b>All set!</b>\n"
         f"I search {escape(scheduler.describe())} and send you the best matches.\n"
+        f"{applying}"
         "Tap a button or type /help."
     )
 
@@ -250,7 +261,19 @@ async def send_matches(bot: Bot, match_ids: list[int]) -> int:
 
 async def report_hunt(bot: Bot, result: HuntResult, manual: bool) -> None:
     chats = allowed_chats()
-    if result.matches:
+    if result.matches and autopilot.autopilot_on():
+        queued, _ = autopilot.queue_matches(result.matches)
+        rest = [m for m in result.matches if m not in queued]
+        line = f"🎯 {len(result.matches)} new matching jobs."
+        if queued:
+            line += f" 🤖 Applying to {len(queued)} for you."
+        if rest:
+            line += " The others are below." if queued else " Here are the best:"
+        for chat in chats:
+            await bot.send_message(chat, line)
+        if rest:
+            await send_matches(bot, rest)
+    elif result.matches:
         for chat in chats:
             await bot.send_message(chat, f"🎯 {len(result.matches)} new matching jobs. Here are the best:")
         await send_matches(bot, result.matches)
@@ -305,6 +328,8 @@ async def show_list(chat_id: int, bot: Bot, statuses: tuple[str, ...], empty: st
     for m, j in rows:
         text, buttons = job_card(m, j)
         await bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, reply_markup=buttons, disable_web_page_preview=True)
+    if "saved" in statuses:
+        await bot.send_message(chat_id, "Want me to apply to all of them?", reply_markup=keyboard([("🤖 Apply to all saved", "ap:saved")]))
 
 
 @only_owner
@@ -343,14 +368,37 @@ async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     store.update("schedule", paused=True)
     scheduler.apply_schedule(context.application)
-    await update.message.reply_text("⏸ Paused. I won't search automatically until you /resume.")
+    applying = autopilot.autopilot_on()
+    if applying:
+        autopilot.queue.update(on=False, resume_on=True)
+    await update.message.reply_text("⏸ Paused. I won't search" + (" or apply" if applying else "") + " until you /resume.")
 
 
 @only_owner
 async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     store.update("schedule", paused=False)
     scheduler.apply_schedule(context.application)
-    await update.message.reply_text(f"▶️ Back on! I'll search {scheduler.describe()}.")
+    again = autopilot.queue.settings().get("resume_on")
+    if again:
+        autopilot.queue.update(on=True, resume_on=False)
+        autopilot.wake()
+    await update.message.reply_text(f"▶️ Back on! I'll search {scheduler.describe()}" + (" and apply for you." if again else "."))
+
+
+@only_owner
+async def cmd_autopilot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await autopilot.show_autopilot(context.bot, update.effective_chat.id)
+
+
+@only_owner
+async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await autopilot.show_applications(context.bot, update.effective_chat.id)
+
+
+@only_owner
+async def cmd_apply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await autopilot.handle_link(update, context):
+        await update.message.reply_text("Send a job link after /apply, or just paste the link here. I'll apply to it.")
 
 
 @only_owner
@@ -382,6 +430,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         for err in last.get("errors", [])[:3]:
             lines.append(f"   ⚠️ {escape(err[:120])}")
     lines += [escape(line) for line in login_flow.status_lines()]
+    cfg = autopilot.queue.settings()
+    today = autopilot.queue.counts_since(autopilot.queue.local_midnight_utc())
+    lines.append(f"🤖 Autopilot: {'on' if cfg['on'] else 'off'} · applied today: {today.get('submitted', 0)}")
     await update.message.reply_html("\n".join(lines))
 
 
@@ -407,15 +458,20 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if kind == login_flow.KIND:
         await login_flow.handle_button(update, context)
         return
+    if kind == autopilot.KIND:
+        await autopilot.handle_button(update, context)
+        return
 
     if kind == "m":
         action, _, mid = arg.partition(":")
+        if action == "apply":
+            await autopilot.apply_match(bot, chat_id, int(mid))
+            return
         store.set_match_status(int(mid), "saved" if action == "save" else "dismissed")
         if action == "save":
-            await q.edit_message_reply_markup(
-                InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Open & apply", url=q.message.reply_markup.inline_keyboard[0][0].url)],
-                                      [InlineKeyboardButton("⭐ Saved", callback_data="noop:")]])
-            )
+            pair = store.match_with_job(int(mid))
+            if pair:
+                await q.edit_message_reply_markup(job_card(*pair)[1])
         else:
             await q.message.delete()
         return
@@ -433,6 +489,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await apply_flow.show_answers(bot, chat_id)
         elif arg == "sites":
             await login_flow.show_sites(bot, chat_id)
+        elif arg == "autopilot":
+            await autopilot.show_autopilot(bot, chat_id)
+        elif arg == "applied":
+            await autopilot.show_applications(bot, chat_id)
         return
 
     if kind == "sched":
@@ -610,6 +670,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         prefs["min_salary"] = text[:40]
         store.put("prefs", prefs)
         await continue_onboarding(chat_id, bot)
+    elif await autopilot.handle_link(update, context):  # a pasted job link: apply to it
+        return
     elif not await apply_flow.handle_update_text(update, context):  # "my notice period is now 15 days"
         await bot.send_message(chat_id, "Tap a button below, or type /help.", reply_markup=main_menu())
 
@@ -637,6 +699,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     # Keep the file itself: job forms ask for it as an upload.
     store.put("cv_file", store.save_file(doc.file_name or "cv.pdf", bytes(data), folder="cv"))
+    store.delete("cv_generated")
     await save_profile_from_text(update.effective_chat.id, context.bot, text)
 
 
@@ -668,6 +731,7 @@ def build_application(token: str) -> Application:
         ("help", cmd_help), ("search", cmd_search), ("today", cmd_today), ("saved", cmd_saved),
         ("profile", cmd_profile), ("schedule", cmd_schedule), ("pause", cmd_pause),
         ("resume", cmd_resume), ("answers", cmd_answers), ("sites", cmd_sites), ("ai", cmd_ai), ("status", cmd_status),
+        ("autopilot", cmd_autopilot), ("applied", cmd_applied), ("apply", cmd_apply),
     ]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))
@@ -680,3 +744,4 @@ async def on_started(app: Application) -> None:
     await app.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
     scheduler.apply_schedule(app, catch_up=True)
     login_flow.schedule_checks(app)
+    autopilot.start(app)

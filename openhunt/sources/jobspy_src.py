@@ -14,6 +14,22 @@ from openhunt.sources.base import Query, RawJob
 DEFAULT_SITES = ["linkedin", "indeed"]
 
 
+def supports(site: str) -> bool:
+    """Whether the installed python-jobspy knows this board (Naukri came in later versions)."""
+    try:
+        from jobspy.model import Site
+    except ImportError:
+        return False
+    return any(m.value == site for m in Site)
+
+
+def default_sites(country: str = "india") -> list[str]:
+    sites = list(DEFAULT_SITES)
+    if (country or "").lower() == "india" and supports("naukri"):
+        sites.append("naukri")  # most Indian jobs, and OpenHunt can apply there once logged in
+    return sites
+
+
 def available() -> bool:
     try:
         import jobspy  # noqa: F401

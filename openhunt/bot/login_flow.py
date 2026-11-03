@@ -38,6 +38,7 @@ class _Waiter:
 _waiting: dict[int, _Waiter] = {}  # chat id → reply the login is waiting for
 _running: set[str] = set()  # sites with a login in progress
 _offered: dict[str, tuple[str, str]] = {}  # site → (email, password), only until the user answers
+_tasks: set[asyncio.Task] = set()
 
 
 # ---------- site status ----------
@@ -229,7 +230,15 @@ def start_login(app: Application, bot: Bot, chat_id: int, name: str, quiet: bool
     if name in _running:
         return
     _running.add(name)
-    app.create_task(run_login(bot, chat_id, name, quiet=quiet), name=f"login-{name}")
+    # Not app.create_task: the bot would wait (up to 10 minutes) for a login on shutdown.
+    task = asyncio.get_running_loop().create_task(run_login(bot, chat_id, name, quiet=quiet), name=f"login-{name}")
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+
+
+def stop() -> None:
+    for task in list(_tasks):
+        task.cancel()
 
 
 async def run_login(bot: Bot, chat_id: int, name: str, quiet: bool = False, site: Site | None = None) -> LoginResult | None:
@@ -258,6 +267,9 @@ async def run_login(bot: Bot, chat_id: int, name: str, quiet: bool = False, site
 
         if result.ok:
             set_status(name, "connected", email=result.email)
+            from openhunt.bot import autopilot  # jobs waiting for this login carry on
+
+            await autopilot.on_login(name)
             await ask.say(f"✅ {site.label} connected." if not quiet else f"🔐 {site.label} had logged me out, so I logged in again. ✅")
             if result.password and not creds.get("password"):
                 _offered[name] = (result.email, result.password)

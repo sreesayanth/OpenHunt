@@ -22,15 +22,17 @@ def job_card(m: Match, j: Job) -> tuple[str, InlineKeyboardMarkup]:
     if m.missing:
         lines.append(f"⚠️ Missing: {escape(m.missing)}")
     lines.append(f"<i>via {escape(j.source)}</i>")
-    buttons = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🔗 Open & apply", url=j.url)],
-            [
-                InlineKeyboardButton("⭐ Save", callback_data=f"m:save:{m.id}"),
-                InlineKeyboardButton("👎 Not for me", callback_data=f"m:hide:{m.id}"),
-            ],
-        ]
+    first = (
+        [InlineKeyboardButton("✅ Applied", callback_data="noop:"), InlineKeyboardButton("🔗 Open", url=j.url)]
+        if m.status == "applied"
+        else [InlineKeyboardButton("🤖 Apply for me", callback_data=f"m:apply:{m.id}"), InlineKeyboardButton("🔗 Open", url=j.url)]
     )
+    second = (
+        [InlineKeyboardButton("⭐ Saved", callback_data="noop:")]
+        if m.status == "saved"
+        else [InlineKeyboardButton("⭐ Save", callback_data=f"m:save:{m.id}"), InlineKeyboardButton("👎 Not for me", callback_data=f"m:hide:{m.id}")]
+    )
+    buttons = InlineKeyboardMarkup([first, second])
     return "\n".join(lines), buttons
 
 
