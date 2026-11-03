@@ -1,387 +1,339 @@
-# OpenHunt Autopilot: apply to jobs from Telegram (Plan)
+# OpenHunt Autopilot: the app applies for you, you only chat (Plan)
 
-> **Goal:** OpenHunt logs in to job sites in a real browser, fills in application forms by itself,
-> and applies, all controlled from Telegram. When a form asks something it doesn't know yet,
-> the question appears **in the Telegram chat**. You answer it **once**. After that, the same
-> question is filled in and submitted automatically every time, with no need for you.
+> **Goal:** you open **one Telegram chat** and nothing else. OpenHunt finds jobs, logs in to job
+> sites, fills in every form and submits it, all **in the background**. The only thing you ever do
+> is answer a question in the chat when a form asks something new. You answer it **once**. Every
+> later form that asks the same thing is filled and submitted automatically.
 
 This plan builds on what OpenHunt v0.1 already has: the Telegram bot (`openhunt/bot/app.py`),
-the settings and jobs database (`openhunt/store.py`), the hunt pipeline (`openhunt/hunt.py`)
-and the any-LLM client (`openhunt/ai/llm.py`).
+the database (`openhunt/store.py`), the hunt pipeline (`openhunt/hunt.py`) and the any-LLM
+client (`openhunt/ai/llm.py`).
+
+## 0. Design rules
+
+1. **Telegram is the only screen.** No browser window pops up, no web page, no "open this link".
+   The browser runs hidden (headless) in the background.
+2. **The app does the work.** It decides which jobs to apply to, clicks through the forms and submits.
+3. **No forms for the user, ever.** No setup questionnaire. Everything that can be read from the
+   CV is read from the CV. You're only asked a question when a real application needs it, and
+   the question arrives as **one chat message with buttons**.
+4. **Ask once, remember forever.** Every answer is saved and reused in any wording, on any site.
+5. **Quiet by default.** No message per click. You get the questions it needs and one daily
+   summary, plus a short message when something truly needs you (a login code, a CAPTCHA).
 
 > ⚠️ **This changes an existing promise.** The README and `PROJECT_PLAN.md` say OpenHunt
-> *never applies for you*. Autopilot is therefore **opt-in**, **off by default**, and shows a
-> clear warning when it's turned on (see [§9 Risks](#9-risks-and-safety-rules)). The README's
-> Safety section has to be updated in the same release that ships this feature.
+> *never applies for you*. Autopilot is turned on with **one tap**, after one short warning
+> (see [§8](#8-risks-and-safety-rules)). The README's Safety section is updated in the same release.
 
 ---
 
-## 1. What the user experiences
+## 1. What the user experiences (all inside the chat)
 
-### 1.1 One-time setup (about 5 minutes, all in Telegram)
-1. `/autopilot` → *"I can apply for you. LinkedIn and some sites don't allow bots, and your
-   account could be limited. Start in 👀 Review mode (I ask before every submit)?"*
-   `[✅ Turn on (Review mode)]` `[Not now]`
-2. **Log in to sites:** `/browser` → `[🔗 LinkedIn]` `[🔗 Naukri]` `[🔗 Indeed]` `[➕ Other site]`.
-   A real browser window opens (or a live view, on a VM; see §4.2). **You type your own password.**
-   OpenHunt never sees or stores it. It only keeps the logged-in session, like your normal browser does.
-3. **Quick answer pack:** the bot asks the ~15 questions almost every form asks, pre-filled
-   from your CV so you mostly tap ✅:
-   phone, email, current city, notice period, expected and current salary, work authorization,
-   need for sponsorship, willing to relocate, years of experience per main skill, highest degree,
-   LinkedIn / GitHub / portfolio URLs, English level, earliest start date,
-   and the "diversity" questions (default: *Prefer not to say*).
+### 1.1 Turning it on: 3 messages
+```
+🤖 Want me to apply to jobs for you?
+I'll apply to good matches by myself and only message you
+when a form asks something I don't know yet.
+Note: LinkedIn and Indeed don't allow bots, so your account
+there could get limited. I go slowly to keep the risk low.
+[✅ Yes, apply for me]  [Not now]
+```
+```
+Which sites should I apply on?
+[✅ Company career sites (safest)]  [✅ LinkedIn]  [✅ Naukri]  [☐ Indeed]
+[Done]
+```
+```
+🔐 To apply on LinkedIn I need to log in once.
+Send your LinkedIn email.
+```
+→ you send the email → *"Now your password. I'll delete your message right after."* → you send it
+→ the bot deletes both messages at once → *"LinkedIn sent a code to your email. Type it here."* →
+`✅ LinkedIn connected. I'll start applying.`
 
-### 1.2 Applying
-From any job card, a new button:
-```
-🟢 92/100 · Data Analyst · Razorpay · Bangalore (Hybrid)
-...
-[🤖 Apply for me] [🔗 Open] [⭐ Save] [👎 Not for me]
-```
-Or paste any link: `/apply https://boards.greenhouse.io/acme/jobs/123`.
-Or let it run by itself (§1.4).
+That's all. There's no answer questionnaire. Your phone, email, city, degree, skills and years
+of experience are already in your CV, so OpenHunt uses them.
 
-### 1.3 When the form asks something new: the question comes to the chat
+### 1.2 What you see from then on
+**When a form asks something new** (the only time you're needed):
 ```
-🤖 Applying: Data Analyst · Razorpay (LinkedIn Easy Apply)
-Page 2 of 4 · I need 2 answers from you
+❓ Razorpay · Data Analyst asks:
+How many years have you worked with Tableau?
+[0] [1] [2] [3] [4] [5+]
+```
+You tap `2`, and that's it. The application continues and is submitted in the background.
+The next time any company asks about Tableau experience, in any wording, the answer is `2`.
 
-❓ 1/2  How many years of experience do you have with Tableau?
-[0] [1] [2] [3] [4] [5+] [✏️ Type]
-💾 Remember: For all jobs ▸        [⏭ Skip this job]
-```
-```
-❓ 2/2  Are you comfortable working from our Bangalore office 3 days a week?
-[Yes] [No]
-💾 Remember: For all jobs ▸
-```
-- Choice questions (dropdown, radio, yes/no, checkbox) → **buttons with the site's own options**.
-- Text and number questions → just **type the reply** in the chat.
-- File questions ("Upload transcript") → **send the file** in the chat.
-- Long questions ("Why do you want to work here?") → the AI writes a draft from your CV and the job.
-  You tap `[✅ Use it]` `[✏️ Edit]` `[🔁 Rewrite]`.
-- `💾 Remember` cycles through: **For all jobs** · **Only for this company** · **Just this once**.
+- Yes/no and choice questions → **buttons** with the site's own options.
+- Number and text questions → **type the reply**.
+- "Upload your transcript" → **send the file** in the chat.
+- "Why do you want to join us?" → the AI writes it from your CV and the job by itself.
+  It's never sent to you. You can turn on "show me AI-written answers first" if you want to check them.
+- Several jobs waiting on the same new question → **asked once**, and all of them continue.
 
-As soon as the last answer arrives, the bot carries on, then shows the review:
+**When something applies** (it doesn't flood you): either one line per job or none at all, your choice.
 ```
-📋 Ready to submit: Data Analyst · Razorpay
-[photo: screenshot of the final review page]
-📚 14 answers from memory · 👤 2 from you just now · 🧠 1 AI draft
-[✅ Submit] [✏️ Change an answer] [❌ Cancel]
+✅ Applied: Data Analyst · Razorpay (LinkedIn)
 ```
-→ `✅ Applied! (proof saved). /applied to see all.`
 
-### 1.4 Fully automatic for repeat questions
-The next time **any** form asks "years of experience with Tableau", in any wording
-("Tableau experience (years)", "How long have you used Tableau?"), OpenHunt fills it from
-memory. **When every field on a form is known, nobody is asked anything.**
+**Once a day** (with the existing morning digest):
+```
+📊 Yesterday: ✅ 11 applied · ❓ 1 question waiting · ⏭ 2 skipped (jobs closed)
+[❓ Answer now]  [📋 See applications]
+```
 
-Three modes (`/autopilot`):
-| Mode | What happens |
+### 1.3 The controls (buttons, rarely needed)
+- `⏸ Pause applying` / `▶️ Resume`
+- `🎯 Only apply to jobs above 80 / 70 / 60` (default: the same "good match" level as the job alerts)
+- `📋 Applications`: what was sent where, with what answers and a proof screenshot
+- `🧠 What I know about you`: see or change any saved answer ("Change my notice period to 30 days")
+- Job cards still have a `🤖 Apply now` button, to apply to one specific job straight away.
+
+You can also just **type** what you want: *"stop applying on LinkedIn"*, *"don't apply to Swiggy"*,
+*"my expected salary is now 15 LPA"*. The AI turns it into the right setting.
+
+---
+
+## 2. Logging in without leaving Telegram
+
+| Situation | What happens in the chat |
 |---|---|
-| 👀 **Review** (default) | Fills everything, asks you only for new questions, then waits for your `✅ Submit`. |
-| ⚡ **Auto-submit known forms** | If every answer came from memory with high confidence, it submits without asking and tells you afterwards. If anything is new, it asks first. |
-| 🚀 **Full autopilot** | Also applies **by itself** to new matches above a score you choose (e.g. ≥ 85), within daily limits. You get one summary per day: *"Applied to 9 jobs today. 2 are waiting for your answers."* |
+| Email + password | You type them. The bot **deletes both messages right away** and types them into the hidden browser. |
+| Code by email / SMS / authenticator | *"Type the code LinkedIn sent you."* You type it, and it's deleted after use. |
+| "Approve on your phone" (LinkedIn app) | *"Tap Yes in the LinkedIn app on your phone."* The bot waits and continues. |
+| Google / "Sign in with Google" login | Same as above: email, password and code in the chat, deleted after use. |
+| CAPTCHA / "are you a robot" | See §2.2. |
+| Logged out weeks later | *"LinkedIn logged me out. Send your password again?"* The password is the only thing asked. |
 
-Recommendation: keep Review mode for the first ~10 applications on each site, then step up.
-The bot suggests this itself: *"Your last 10 LinkedIn forms needed no changes. Switch LinkedIn to ⚡ Auto-submit?"*
+### 2.1 What happens to your password
+- **Default:** the password is used once to log in and is **never saved**. Only the login session
+  (cookies) is kept, encrypted, in `~/.openhunt`. LinkedIn sessions usually last months, so
+  you rarely get asked again.
+- **Optional:** `🔁 Remember my password so I never ask again` stores it encrypted, the same way
+  OpenHunt already stores your bot token and AI key (`store.SECRET_KEYS`).
+- Honest note for users: Telegram bot chats are not end-to-end encrypted, so the password passes
+  through Telegram's servers for a moment before being deleted. The bot says this in one line and
+  suggests turning on two-step login on the job site.
+
+### 2.2 CAPTCHAs, still inside Telegram
+OpenHunt never tries to trick or solve CAPTCHAs by itself. A person solves them, without leaving the chat:
+- **Picture/text CAPTCHA** → the bot sends the image: *"Type the letters you see."*
+- **Click-type checks** ("select all traffic lights", "press and hold") → the bot sends a
+  `[🧩 Solve it here]` button that opens a **Telegram Mini App**. This is a small screen that
+  opens *inside* Telegram, on top of the chat, showing the live hidden browser page. You do the
+  check with your finger, the screen closes, and you're back in the chat.
+  - It works from home Wi-Fi and VMs with no setup: OpenHunt opens a temporary secure tunnel
+    (Cloudflare quick tunnel) only while the check is open and closes it afterwards.
+  - Only you can open it: every request is checked with Telegram's signed Mini App data, which
+    proves it comes from your linked Telegram account (HMAC with the bot token).
+- If CAPTCHAs keep coming on a site, OpenHunt **pauses that site for a day** and tells you.
+  Repeated CAPTCHAs mean the site is suspicious, and pushing on risks the account.
 
 ---
 
-## 2. Architecture
+## 3. Who decides what to apply to
 
 ```
- Telegram ◄──► bot/apply_flow.py ──┐        (questions, review cards, /answers, /browser)
-                                   ▼
-                     apply/queue.py  (one application at a time, daily caps, retries)
-                                   │
-                                   ▼
-                     apply/engine.py  ── loop per form page:
-                        1. adapter.read_page()  → list[FormField]
-                        2. answers.resolve(fields) → filled / unknown
-                        3. unknown? → ask in Telegram, wait (pause & resume)
-                        4. adapter.fill(), adapter.next()
-                        5. last page → review card or auto-submit
-                                   │
-            ┌──────────────────────┼──────────────────────┐
-            ▼                      ▼                      ▼
-   apply/browser.py         apply/adapters/*         apply/answers.py
-   Playwright Chromium      linkedin, greenhouse,    Answer bank + question
-   persistent profile       lever, ashby, indeed,    matching (rules → fuzzy →
-   per site, login,         naukri, workday,         AI), typed values,
-   screenshots, live view   generic (AI-driven)      option mapping
-                                   │
-                                   ▼
-                     store.py: Application, Answer, PendingQuestion, SiteSession
+hunt (existing) ─► new match ≥ your level? ─► not applied before? ─► site enabled + under daily cap?
+                                                                     │
+                                                                     ▼
+                                                              apply queue ─► background browser
 ```
+- Runs after every scheduled hunt and empties the queue slowly through the day (see §7).
+- **Skips by itself:** jobs already applied to (on any site), closed jobs, companies you blocked,
+  and jobs whose form needs something it must never guess (see §5.4) until you answer.
+- The external "Apply on company website" links on LinkedIn are followed too. The job is applied to
+  on the company's own form, which is usually Greenhouse, Lever, Ashby or Workday.
 
-It runs **inside the existing single asyncio process** (`runtime.py`) using Playwright's async
-API, so the bot, scheduler, web page and browser share one event loop. Nothing new to start.
+---
+
+## 4. Architecture
+
+```
+ Telegram chat ◄──► bot/apply_flow.py   (questions, logins, codes, controls, daily summary)
+                          │
+                          ▼
+                  apply/queue.py   one application at a time · daily caps · pacing · retries
+                          │
+                          ▼
+                  apply/engine.py  for each form page:
+                     read fields → answer from memory → unknown? ask in chat & park the job
+                     → fill → next → … → submit → proof screenshot
+                          │
+        ┌─────────────────┼────────────────────┬─────────────────────┐
+        ▼                 ▼                    ▼                     ▼
+ apply/browser.py   apply/adapters/*     apply/answers.py      apply/miniapp.py
+ hidden Chromium,   linkedin, naukri,    answer memory,        Mini App + temporary
+ saved logins,      indeed, greenhouse,  question matching,    tunnel, only for
+ login via chat     lever, ashby,        fitting answers to    CAPTCHA checks
+                    workday, generic(AI) each form
+```
+Everything runs **inside the existing single process** (`runtime.py`), using Playwright's async API.
+There is nothing new for the user to start or install, beyond one automatic browser download (§9).
 
 ### New files
 ```
 openhunt/apply/
-├── __init__.py
-├── browser.py        # launch/reuse Chromium, one persistent profile per site, login check, screenshots
-├── fields.py         # FormField model + DOM → fields extraction (labels, options, required)
-├── answers.py        # answer bank: normalize question → intent/key → stored typed value → fit to field
-├── intents.py        # catalogue of common questions (regex + slot extraction, e.g. years_with(skill))
-├── engine.py         # the page loop, pause/resume, review, submit, proof capture
-├── queue.py          # apply queue worker, caps, pacing, active hours
-├── guard.py          # CAPTCHA / checkpoint / "already applied" / logged-out detection
+├── browser.py      # headless Chromium, one saved session per site, chat-driven login
+├── fields.py       # read any form into FormField objects (label, kind, options, required)
+├── answers.py      # answer memory: match question → saved answer → fit to this form's field
+├── intents.py      # common questions in many wordings (years_with(skill), notice_period, …)
+├── engine.py       # page loop, park/resume, submit, proof
+├── queue.py        # picks jobs, caps, pacing, active hours
+├── guard.py        # CAPTCHA, login challenge, "already applied", closed job, stuck page
+├── miniapp.py      # Telegram Mini App view + temporary tunnel (CAPTCHA only)
 └── adapters/
-    ├── base.py       # Adapter protocol
-    ├── greenhouse.py
-    ├── lever.py
-    ├── ashby.py
-    ├── linkedin.py   # Easy Apply modal only; external "Apply" links are routed to other adapters
-    ├── indeed.py
-    ├── naukri.py
-    ├── workday.py
-    └── generic.py    # unknown sites: AI reads the page and maps fields
-openhunt/bot/apply_flow.py   # Telegram handlers for everything above
-openhunt/web/browser_view.py # live remote browser view for VM users (§4.2)
+    ├── base.py
+    ├── linkedin.py  naukri.py  indeed.py
+    ├── greenhouse.py  lever.py  ashby.py  workday.py
+    └── generic.py  # any other site: AI finds the fields and buttons
+openhunt/bot/apply_flow.py
 ```
 
 ### Adapter interface
 ```python
 class Adapter(Protocol):
-    name: str                       # "linkedin", "greenhouse", ...
-    needs_login: bool
-
+    name: str
     def matches(self, url: str) -> bool: ...
-    async def open(self, page: Page, job_url: str) -> None:          # go to job, click "Apply"
-    async def read_page(self, page: Page) -> list[FormField]: ...     # fields on the current step
-    async def fill(self, page: Page, field: FormField, value: Value) -> None: ...
-    async def next(self, page: Page) -> StepResult:                   # NEXT | REVIEW | SUBMITTED | ERROR
-    async def submit(self, page: Page) -> bool: ...
+    async def login(self, page: Page, ask: AskUser) -> bool: ...   # asks email/password/code via chat
     async def is_logged_in(self, page: Page) -> bool: ...
+    async def open(self, page: Page, job_url: str) -> None: ...    # click "Apply" / "Easy Apply"
+    async def read_page(self, page: Page) -> list[FormField]: ...
+    async def fill(self, page: Page, field: FormField, value: Value) -> None: ...
+    async def next(self, page: Page) -> StepResult: ...             # NEXT | SUBMITTED | ERROR
 ```
-Site-specific adapters handle the known layouts precisely and quickly. `generic.py` is the
-fallback for any other site: it reads the accessibility tree, asks the LLM to label fields and
-find the Next and Submit buttons, then uses the same answer bank. This is how "any other website"
-is supported without writing code for each one.
+`AskUser` is the bridge to the chat. The adapter calls `await ask.text("Type the code LinkedIn sent you")`
+and gets your reply back, so every site's login and every question goes through Telegram.
 
 ---
 
-## 3. The answer bank (the heart of "answer once, never again")
+## 5. Answer memory (how it never asks twice)
 
-### 3.1 Every field becomes a `FormField`
-```python
-@dataclass
-class FormField:
-    label: str                 # "How many years of experience do you have with Tableau?"
-    kind: str                  # text | textarea | number | select | radio | checkbox | file | date
-    options: list[str]         # for select/radio/checkbox, exactly as the site shows them
-    required: bool
-    current: str | None        # some sites pre-fill (e.g. LinkedIn phone)
-    locator: str               # how the adapter finds it again
-    context: str               # section heading / help text, used for matching
+### 5.1 Filled in automatically, with nothing asked
+On day one, before any form, the memory is filled from things OpenHunt already has:
+- **From the CV** (already parsed in `ai/profile.py`, extended): name, email, phone, city,
+  LinkedIn/GitHub/portfolio links, degree, college, graduation year, total years of experience,
+  **years per skill** (worked out from the CV's job dates), languages, current job title and company.
+- **From the chat so far:** job titles, locations, minimum salary (→ expected salary).
+- **Safe defaults:** diversity questions (gender, race, disability, veteran) → *Prefer not to say*;
+  "How did you hear about us?" → the site name (e.g. *LinkedIn*); "Follow this company" → unticked.
+- **The CV file itself** is uploaded wherever a form asks for a résumé.
+
+### 5.2 Matching any wording
+For each form field, in order, stopping at the first confident match:
+1. **Common question rules** (`intents.py`, instant): "Tableau experience (yrs)", "How long have you
+   used Tableau?" and "Years of experience with Tableau" all → `years_with(tableau)`.
+2. **Same question seen before** (normalized text).
+3. **Very similar question** (fuzzy match ≥ 92%, same kind of field).
+4. **AI match**: the AI may only *pick one of your saved answers*. It never makes one up.
+5. Still unknown → **one chat question**, then saved.
+
+### 5.3 One answer fits every form
+Answers are saved as values, not just text, so the same answer fits different forms:
+`3 years` → `3` in a number box, `2-4` in a dropdown · `yes` → `Yes` radio or a ticked box ·
+`12 LPA` → `1200000` in a ₹ field or `12` in an "LPA" field. If an answer can't be fitted to the
+options with confidence, it's asked instead of guessed.
+
+### 5.4 Never guessed (always from your CV or from you)
+Years of experience with a skill not in the CV · work authorization and visa · degrees and
+certificates · criminal record or background checks · salary history · anything legal ("I confirm…").
+For these, the AI never fills an answer that isn't already in your CV or your saved answers.
+
+### 5.5 Changing answers
+Type it naturally: *"my notice period is now 15 days"* → `✅ Updated. I'll use 15 days from now on.`
+Or `🧠 What I know about you` lists everything, with a button to change each one.
+A new CV refreshes everything taken from the CV automatically.
+
+---
+
+## 6. Parking a job while you're busy
+- An unknown question **parks** that application and the bot asks you. The background browser
+  **moves on** to the next job, so nothing waits for you.
+- When you answer (minutes or days later), the parked job **starts again from the beginning**. All
+  earlier answers are in memory, so it goes straight through and submits.
+- Parked jobs that close before you answer are dropped quietly.
+- Unanswered questions are repeated once, in the daily summary, never as repeated pings.
+
+---
+
+## 7. Pacing and limits (protects your accounts, invisible to you)
+- One hidden browser, **one application at a time**.
+- Human-like speed: random pauses between clicks, natural typing speed, a few minutes between
+  applications, and only between 9:00 and 21:00 your time.
+- Daily limits per site: LinkedIn 15 · Naukri 25 · Indeed 15 · company career sites 40 · other sites 20.
+  The user only sees them if they ask.
+- **Never applies twice** to the same job, even if it's posted on two sites.
+- CAPTCHA or "unusual activity" warning → that site pauses for 24 h, and you get one message.
+
+---
+
+## 8. Risks and safety rules
+1. **Site rules.** LinkedIn and Indeed forbid automated applying, and accounts can be restricted.
+   The user is told once, in plain words, when turning Autopilot on. Company career sites
+   (Greenhouse/Lever/Ashby/Workday) are the safest and are always on by default. The slow pacing
+   and limits above stay on and can't be turned off.
+2. **Passwords** are deleted from the chat right away and not stored unless the user opts in (§2.1).
+3. **No CAPTCHA tricks.** A person solves every check (§2.2).
+4. **Honest applications.** Factual answers come only from the CV or the user (§5.4). The AI
+   only writes essay answers, from the real CV.
+5. **Job pages are untrusted.** Form text is handled as data, never as instructions to the bot.
+   A form can't change settings or pull out other saved answers.
+6. **Only the linked Telegram account** controls the bot (existing `only_owner`), and only it can
+   open the Mini App (signed by Telegram).
+7. **Proof of everything:** every submission saves exactly what was sent plus a screenshot.
+8. `openhunt reset` deletes saved logins, answers and proof.
+
+---
+
+## 9. Install impact
+- Autopilot needs Chromium. On the first `✅ Yes, apply for me`, OpenHunt downloads it by itself
+  (about 150 MB) and says *"Getting ready… 1 minute"*. There's no command for the user to run.
+- Docker image: Chromium included.
+- Android/Termux can't run Chromium. The bot says *"Applying needs a laptop or VM; job alerts still work here"*.
+
+---
+
+## 10. Data model (new tables in `store.py`)
 ```
+Application(id, job_id → Job UNIQUE, site, url, status, created_at, submitted_at,
+            attempts, last_error, answers_snapshot_json, proof_path)
+  status: queued | running | parked | submitted | skipped | expired | failed | needs_you
 
-### 3.2 Questions are matched by meaning, not exact wording
-`answers.resolve(field)` tries these in order and stops at the first confident hit:
+Answer(id, key, intent, slots_json, question_text, value_json,
+       scope: global|company, company, source: cv|chat|default|ai_essay,
+       use_count, last_used_at)
 
-1. **Known intent (rules, free, instant).** `intents.py` maps common wordings to an intent
-   with slots, e.g.
-   - "years of experience with Tableau" / "Tableau experience (yrs)" → `years_with(skill="tableau")`
-   - "notice period" / "how soon can you join" → `notice_period`
-   - "require sponsorship" / "need a visa" → `needs_sponsorship(country=…)`
-   - "legally authorized to work in India" → `work_authorized(country="india")`
-   - "expected CTC" / "salary expectations" → `expected_salary`
-2. **Exact question seen before**: normalized text hash (lowercase, no punctuation or numbers,
-   stop-words removed) matches a saved `Answer.key`.
-3. **Fuzzy match** to saved questions (`rapidfuzz` token-set ratio ≥ 92, same field kind).
-4. **AI match**: the LLM gets the question, the options, and a short list of the closest saved
-   questions, and replies `{intent or saved_id, confidence}`. It **only chooses among saved
-   answers**. It never invents a factual answer.
-5. Otherwise → **unknown** → asked in Telegram.
+PendingQuestion(id, key, field_json, application_ids_json, telegram_message_id,
+                created_at, answered_at)
 
-### 3.3 Answers are stored as typed values, then fitted to each form
-Saving `"3"` as text breaks when the next site shows a dropdown `0-1 / 2-4 / 5+`. So answers are
-stored as **values with a type** and adapted per field:
-
-| Stored value | Field on the next site | Filled with |
-|---|---|---|
-| `years: 3` | number input | `3` |
-| `years: 3` | dropdown `0-1, 2-4, 5+` | `2-4` |
-| `bool: true` | radio `Yes / No` | `Yes` |
-| `bool: true` | checkbox "I am authorized…" | checked |
-| `money: 1200000 INR/yr` | text "Expected CTC (LPA)" | `12` |
-| `text: "30 days"` | dropdown `Immediate, 15 days, 1 month, 2+ months` | `1 month` (AI picks the closest option) |
-
-If the stored value can't be fitted to the options with confidence, the question is asked
-instead of guessing.
-
-### 3.4 Confidence decides what happens
-| How it was matched | Review mode | Auto-submit mode |
-|---|---|---|
-| Intent rule / exact / profile fact | fill | fill |
-| Fuzzy ≥ 92 | fill, mark 📚 in review | fill |
-| AI match ≥ 0.9 | fill, mark 🧠 in review | fill, listed in the "after" report |
-| AI match < 0.9 or no fit | **ask** | **ask** (no auto-submit for that form) |
-| Free-text essay (why us, cover letter) | AI draft, you approve | AI draft auto-used **only if** you turned on "auto-approve AI drafts" |
-| Sensitive (gender, race, disability, veteran, age) | from your saved choice only, never AI | same |
-
-### 3.5 Scope and editing
-- Each answer has a scope: **global**, **per company**, or **one-off**.
-  Company answers win over global ones.
-- `/answers` lists everything it has learned, grouped by topic, with search, edit and delete.
-  It also shows where each answer is used: *"Used 23 times · last on Swiggy, 2 days ago"*.
-- Answers are also **exported and imported** as one file (back up, or move to a new machine).
-- When you send a new CV, answers derived from the old CV (years of experience, skills) are
-  flagged for a quick re-check, but nothing is deleted.
-
----
-
-## 4. Browser and logins
-
-### 4.1 Engine
-- **Playwright + Chromium**, with one **persistent profile directory per site** in
-  `~/.openhunt/browser/<site>/` (folder permissions 700). Logins survive restarts, just like a normal browser.
-- A new optional install extra: `pip install "openhunt[boards,apply]"`, then `openhunt browser install`
-  (wraps `playwright install chromium`). The Docker image gets an `apply` variant with Chromium included.
-- Runs **headless** by default and **headed** when you log in or ask to watch.
-- **Not supported on Android/Termux** (Chromium can't run there). Termux users can still use
-  everything else. The bot says so instead of failing.
-
-### 4.2 Logging in (you type the password, never the bot)
-| Where OpenHunt runs | How you log in |
-|---|---|
-| Your laptop | `/browser` → `[🔗 LinkedIn]` → a real browser window opens on the laptop. Log in normally; the bot notices and says `✅ LinkedIn connected`. |
-| A VM / server | `/browser` → the bot sends a link to a **live browser view** in the OpenHunt web page (`/browser`, built on Chrome's screencast with clicks and typing passed through). Open it through your SSH tunnel or Tailscale, then log in. |
-| Either | **Move a login:** log in on your laptop, run `openhunt browser export linkedin`, then `openhunt browser import` on the VM (an encrypted file). |
-
-- **2-step codes (OTP)** during login or apply: the bot asks *"LinkedIn sent you a code. Type it here."*
-  The code you type is passed to the page and then deleted from the chat.
-- **Health check**: before each batch, and in `/status`, OpenHunt checks each site is still logged
-  in. If not: *"LinkedIn logged you out. Tap to log in again."*
-
-### 4.3 When a human is needed
-`guard.py` checks every page for:
-- **CAPTCHA / "are you a robot" / security checkpoint** → **stop**, send a screenshot plus the live-view
-  link, and pause that site. OpenHunt **never tries to solve or bypass CAPTCHAs**.
-- **"Already applied"** → mark as applied, skip.
-- **Job closed / page missing** → mark as expired.
-- **Logged out** → pause the site and ask you to log in again.
-- **Unknown layout / stuck for 3 tries on the same page** → screenshot to Telegram:
-  `[👀 Finish it myself (live view)] [⏭ Skip] [🐞 Save debug info]`.
-
----
-
-## 5. Pause and resume: waiting for your answer
-
-A form shouldn't hold a browser tab open for hours while you're busy. So:
-1. Unknown questions → saved as `PendingQuestion` rows → sent to Telegram. The application is marked
-   `waiting_for_you`.
-2. The tab stays open for **10 minutes**. If you answer in time, it continues on the same page.
-3. After that, the tab closes. When you answer later, the application is **started again from the
-   beginning**. Because all earlier answers are in the answer bank, it goes straight through to the
-   point it reached before, and further.
-4. Meanwhile the queue **moves on to other jobs**. One unanswered question never blocks the others.
-5. Several jobs asking the same new question → **asked once**, and all of them continue after one answer.
-
----
-
-## 6. Data model (new tables in `store.py`)
-
+SiteLogin(site, status: ok|logged_out|paused, paused_until, daily_count, day,
+          password_encrypted NULL)          # only if the user opted in
 ```
-Application(id, job_id → Job UNIQUE, site, url, status, mode, score_at_apply,
-            created_at, submitted_at, attempts, last_error,
-            answers_snapshot_json,        # exactly what was submitted
-            proof_path)                   # screenshot of the confirmation page
-  status: queued | running | waiting_for_you | ready_for_review | submitted |
-          skipped | expired | failed | needs_human
-
-Answer(id, key UNIQUE(key, scope, company), intent, slots_json, question_text,
-       kind, value_json, scope: global|company|once, company,
-       source: user|profile|ai_draft, use_count, last_used_at, created_at, needs_recheck)
-
-PendingQuestion(id, application_id, field_json, asked_message_id, created_at,
-                answered_at, answer_id)
-
-SiteSession(site, status: ok|logged_out|blocked, last_check_at, daily_count, day,
-            mode: review|auto|autopilot, paused)
-```
-The existing `Match.status` already has `applied`. It is set when an `Application` is submitted.
-Proof screenshots go in `~/.openhunt/proof/`. `openhunt reset` wipes them, the browser profiles and the answer bank.
+Browser sessions: `~/.openhunt/browser/<site>/` (folder permissions 700, cookies encrypted at rest).
+When a job is submitted, the existing `Match.status` becomes `applied`.
 
 ---
 
-## 7. Telegram commands and buttons (new)
-
-| Command | What it does |
-|---|---|
-| `/autopilot` | Turn on/off, choose mode per site, minimum score, daily limit, active hours |
-| `/browser` | Log in to sites, see which are connected, open the live view |
-| `/apply <link>` | Apply to any job link |
-| `/queue` | What's waiting, running and needs you, with `[▶️ Resume]` `[⏸ Pause]` |
-| `/answers` | See, search, edit and delete learned answers |
-| `/applied` | Applications sent, with proof screenshots and status |
-
-Job card: add `🤖 Apply for me`. Saved jobs: `🤖 Apply to all saved`.
-Daily summary (with the existing digest): *"✅ 7 applied · ⏳ 2 need your answers · ⚠️ 1 needs you to log in"*.
-
-Optional later: a **Telegram Mini App** that shows a whole form page as a real form inside Telegram.
-This needs a public HTTPS address, so the chat-question flow above stays the default.
-
----
-
-## 8. Pacing and limits (keeps accounts safe and the queue sane)
-- **One browser, one application at a time.** No parallel tabs on the same site.
-- **Human-like pace:** a random 1–4 s between actions, typing speed variation, a 1–3 min gap
-  between applications, and only during the **active hours** you choose (default 9:00–21:00).
-- **Daily caps per site** (editable): LinkedIn 15, Naukri 25, Indeed 15, ATS sites
-  (Greenhouse/Lever/Ashby) 40, generic sites 20.
-- **Never apply twice**: one `Application` per job fingerprint, plus "already applied" detection on the page.
-- **Back off automatically:** a CAPTCHA or checkpoint pauses that site for 24 h and tells you.
-
----
-
-## 9. Risks and safety rules
-1. **Site rules.** LinkedIn's and Indeed's user agreements forbid bots and automated activity.
-   Accounts can be restricted. Autopilot is opt-in, shows this warning when turned on, recommends
-   starting with ATS sites (Greenhouse, Lever and Ashby forms are public and don't need a login),
-   and uses the caps above. The user carries this risk, and the UI says so plainly.
-2. **No passwords stored.** You log in yourself; only the browser session is kept, locally.
-3. **No CAPTCHA solving or bot-detection evasion.** A human always handles those.
-4. **Honest answers.** AI never invents facts (years, degrees, authorizations). Factual answers
-   come only from your profile or from you. AI only drafts essay answers, from your real CV.
-5. **Job pages are untrusted.** Form text and job descriptions go to the LLM as data, inside the
-   existing prompt-injection guard. A form can't make the bot change settings or reveal data.
-   AI output is only ever used to *choose among options* or *draft text* for review.
-6. **Sensitive questions** (diversity/EEO, disability, age, salary history where illegal):
-   only your saved choice is used, default *Prefer not to say*.
-7. **Audit trail.** Every submit saves exactly what was sent plus a screenshot, so you can
-   always answer *"what did I tell this company?"*.
-8. **Only linked Telegram accounts** can trigger applications (the existing `only_owner` guard),
-   and the live browser view requires the web password.
-
----
-
-## 10. Build phases
+## 11. Build phases
 
 | Phase | Deliverable | Done when |
 |---|---|---|
-| **A. Answer bank + chat Q&A** (≈1 wk) | `fields.py`, `answers.py`, `intents.py`, tables, `/answers`, quick answer pack, question cards in Telegram | Unit tests: the same question in 5 wordings resolves to one answer; values fit number, dropdown and radio fields |
-| **B. Browser + logins** (≈1 wk) | `browser.py`, persistent profiles, `/browser`, login detection, OTP relay, health check, `openhunt[apply]` extra, Docker variant | You can log in to LinkedIn from Telegram and `/status` shows ✅ |
-| **C. ATS adapters + Review mode** (≈1.5 wk) | Greenhouse, Lever, Ashby, `engine.py`, review card with screenshot, proof capture, `/applied` | A real Greenhouse job is applied to end-to-end from one tap, with you only answering new questions |
-| **D. LinkedIn Easy Apply** (≈1.5 wk) | `linkedin.py` (multi-step modal, resume pick, follow-company checkbox off), `guard.py` | 10 Easy Apply jobs in a row; the second batch needs zero answers from you |
-| **E. Queue, pause/resume, modes** (≈1 wk) | `queue.py`, waiting/resume, ⚡ Auto-submit, 🚀 Autopilot from hunt results, caps, active hours, daily summary | Autopilot applies to new ≥ 85 matches overnight within caps and sends a morning summary |
-| **F. More sites** (ongoing) | Naukri, Indeed, Workday, `generic.py` AI adapter, live browser view for VMs | An unknown career site is completed with the generic adapter |
-| **G. Polish** | Telegram Mini App form view, answer import/export, the "switch to Auto?" suggestion, README/Safety update | — |
+| **A. Answer memory** | `fields.py`, `answers.py`, `intents.py`, tables, CV → answers, chat questions with buttons, "what I know about you", typed changes | One question in 5 wordings → asked once; answers fit number, dropdown and radio fields |
+| **B. Hidden browser + chat login** | `browser.py`, automatic Chromium download, login by chat (email, password, code, app approval), messages deleted, sessions saved | LinkedIn and Naukri log in entirely from the chat |
+| **C. Company career sites** | Greenhouse, Lever, Ashby adapters, `engine.py`, parking, proof | A real Greenhouse job is applied to in the background; the user only answers new questions |
+| **D. LinkedIn Easy Apply + Naukri** | adapters, `guard.py`, following external apply links | 10 jobs in a row; the second 10 need no questions |
+| **E. Autopilot** | `queue.py`, auto-pick from hunts, limits, pacing, daily summary, pause/resume, typed commands | Applies overnight within limits and sends one morning summary |
+| **F. CAPTCHA in Telegram** | `miniapp.py`, temporary tunnel, signed access, picture-CAPTCHA by chat | A CAPTCHA is solved without leaving Telegram |
+| **G. More sites** | Indeed, Workday, `generic.py` AI adapter | An unknown career site is completed by the AI adapter |
 
-**Tests:** saved HTML copies of each site's form under `tests/fixtures/forms/`, filled by the real
-adapters in headless Chromium (no network), plus unit tests for matching and value fitting.
-Live-site checks are a manual script (`openhunt apply --dry-run <url>` fills the form but never submits),
-because sites change and CI must not apply to real jobs.
+**Testing:** saved copies of each site's forms in `tests/fixtures/forms/`, filled by the real
+adapters in headless Chromium without network access. A developer-only `--dry-run` mode fills
+everything but never presses Submit, for checking live sites safely.
 
 ---
 
-## 11. Decisions needed from you
-1. **Where will it mostly run?** Laptop (simplest login) or VM (needs the live view in Phase F to come earlier)?
-2. **First site to support:** LinkedIn Easy Apply (most jobs, most risk) or ATS forms first (safer and
-   steadier; recommended)?
-3. **Default mode for new users:** 👀 Review (recommended) or ⚡ Auto-submit?
-4. **Daily caps**: keep the defaults in §8?
+## 12. Settled
+- Telegram only: no links, windows or web pages for the user.
+- The app applies by itself by default; the user only answers new questions.
+- No setup questionnaire: answers come from the CV first, then from questions inside real applications.
+- Login happens through the chat; passwords are not stored unless the user opts in.

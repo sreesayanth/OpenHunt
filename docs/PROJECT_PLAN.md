@@ -49,7 +49,7 @@ None of these combines everything: global sources, any LLM, the full apply and i
 
 **Rule:** OpenHunt **never auto-submits** applications on LinkedIn or Indeed, because that breaks their terms and gets accounts banned. It prepares everything and sends you a one-tap "Open and apply" link instead. Optional auto-fill for plain ATS forms (Greenhouse, Lever) is a later, opt-in feature that always asks you to confirm.
 
-> **Update:** an opt-in auto-apply mode ("Autopilot") is now planned, with Review mode as the default, daily caps, and a human handling every CAPTCHA. See [AUTO_APPLY_PLAN.md](AUTO_APPLY_PLAN.md).
+> **Update:** an opt-in auto-apply mode ("Autopilot") is now planned. It is run entirely from the Telegram chat, with daily limits, and a person solves every CAPTCHA. See [AUTO_APPLY_PLAN.md](AUTO_APPLY_PLAN.md).
 
 ---
 
