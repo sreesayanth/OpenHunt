@@ -12,6 +12,8 @@
 
 > Status: early MVP. Searching, ranking and applying for you (Autopilot) work. Tested against local copies of each site's form; real-site testing is in progress. See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) and [docs/AUTO_APPLY_PLAN.md](docs/AUTO_APPLY_PLAN.md).
 
+📖 **Full guide:** [docs/GUIDE.md](docs/GUIDE.md): install, setup, Autopilot, answers, logins, settings, troubleshooting and the code map.
+
 ## Start in 3 minutes
 
 ### On your laptop
@@ -70,7 +72,7 @@ At the end of setup the bot asks *"Want me to apply for you?"*. Tap **Yes** and 
 | `/saved` | Jobs you starred |
 | `/profile` | Change jobs, places, salary, or send a new CV |
 | `/schedule` | Every morning, twice a day, or every hour |
-| `/pause` / `/resume` | Stop and start automatic searching |
+| `/pause` / `/resume` | Stop and start searching and applying |
 | `/sites` | Log in to LinkedIn or Naukri, all inside the chat, so I can apply there later |
 | `/answers` | What I know about you: the answers I'll use on job forms. Change any of them, or just type *"my notice period is now 30 days"* |
 | `/ai` | Connect or change AI |
