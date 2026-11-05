@@ -47,7 +47,9 @@ def apply_schedule(app: Application, catch_up: bool = False) -> None:
     if not mode or sched.get("paused"):
         return
 
-    tz = datetime.now().astimezone().tzinfo
+    from openhunt.timeutil import user_tz
+
+    tz = user_tz()  # the user's clock, even on a VM set to UTC
     if mode == "hourly":
         jq.run_repeating(_scheduled, interval=3600, first=60, name="hunt")
     else:

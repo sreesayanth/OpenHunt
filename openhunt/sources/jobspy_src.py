@@ -1,7 +1,8 @@
 """LinkedIn, Indeed, Glassdoor, Naukri... through the python-jobspy library.
 
 Personal, low-volume use only: these sites block heavy traffic and LinkedIn's terms forbid
-automation, so we only *search* public listings (no login) and never apply automatically.
+automation, so searching uses public listings with no login. Applying is separate and opt-in
+(see openhunt/apply).
 """
 
 import asyncio
@@ -11,6 +12,22 @@ from datetime import datetime
 from openhunt.sources.base import Query, RawJob
 
 DEFAULT_SITES = ["linkedin", "indeed"]
+
+
+def supports(site: str) -> bool:
+    """Whether the installed python-jobspy knows this board (Naukri came in later versions)."""
+    try:
+        from jobspy.model import Site
+    except ImportError:
+        return False
+    return any(m.value == site for m in Site)
+
+
+def default_sites(country: str = "india") -> list[str]:
+    sites = list(DEFAULT_SITES)
+    if (country or "").lower() == "india" and supports("naukri"):
+        sites.append("naukri")  # most Indian jobs, and OpenHunt can apply there once logged in
+    return sites
 
 
 def available() -> bool:
@@ -69,6 +86,7 @@ class JobSpySource:
                     remote=bool(row.get("is_remote")) if _clean(row.get("is_remote")) else False,
                     salary=_salary(row),
                     description=_clean(row.get("description")),
+                    apply_url=_clean(row.get("job_url_direct")),
                     posted_at=datetime.combine(posted, datetime.min.time()) if hasattr(posted, "year") else None,
                 )
             )

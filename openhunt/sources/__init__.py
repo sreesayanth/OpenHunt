@@ -13,7 +13,8 @@ def enabled_sources() -> list[Source]:
     prefs = store.get("prefs", {}) or {}
     sources: list[Source] = [RemotiveSource()]
     if jobspy_src.available():
-        sources.append(jobspy_src.JobSpySource(prefs.get("board_sites")))
+        sites = prefs.get("board_sites") or jobspy_src.default_sites(prefs.get("country", "india"))
+        sources.append(jobspy_src.JobSpySource(sites))
     if prefs.get("watchlist"):
         sources.append(ATSSource(prefs["watchlist"]))
     return sources
